@@ -249,7 +249,7 @@ ${contextBlock || "(vuoto)"}
       const call = toolCallSchema.parse(JSON.parse(maybe));
 
       if (call.tool === "expenses.list") return runToolAndReply("expenses.list", () => listExpenses());
-      if (call.tool === "expenses.create") return runToolAndReply("expenses.create", () => createExpense(call.args));
+      if (call.tool === "expenses.create") return runToolAndReply("expenses.create", () => createExpense(call.args as { amount: number; date: string; currency?: string; category?: string; description?: string }));
       if (call.tool === "expenses.update") return runToolAndReply("expenses.update", () => updateExpense(call.args.id, call.args.patch));
       if (call.tool === "expenses.delete") return runToolAndReply("expenses.delete", () => deleteExpense(call.args.id));
     } catch (err) {
