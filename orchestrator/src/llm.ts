@@ -26,7 +26,7 @@ export async function chat(
   );
 
   const completion = llm.chat.completions.create({
-    model: model || env.LLM_MODEL,
+    model: model ?? env.LLM_MODEL,
     messages,
     temperature: 0.2
   });

@@ -103,7 +103,7 @@ export async function chatViaCopilotSdk(messages: Message[], model?: string): Pr
   }
 
   const session = await client.createSession({
-    model: model || env.COPILOT_MODEL || "gpt-4.1",
+    model: model ?? env.COPILOT_MODEL ?? "gpt-4.1",
     onPermissionRequest: approveAll,
     systemMessage: {
       mode: "replace",

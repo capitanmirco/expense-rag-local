@@ -46,3 +46,8 @@ Thumbs.db
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Bob the Fixer local configuration
+bobthefixer.env
+# SonarQube local configuration
+sonar-project.properties

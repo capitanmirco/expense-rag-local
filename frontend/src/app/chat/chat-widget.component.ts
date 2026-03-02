@@ -26,26 +26,26 @@ function sortModels(list: ModelOption[]): ModelOption[] {
   styleUrls: ["./chat-widget.component.css"]
 })
 export class ChatWidgetComponent implements OnInit {
-  @Output() expensesChanged = new EventEmitter<void>();
+  @Output() readonly expensesChanged = new EventEmitter<void>();
 
-  models = signal<ModelOption[]>([]);
-  modelsLoading = signal(true);
+  readonly models = signal<ModelOption[]>([]);
+  readonly modelsLoading = signal(true);
 
-  messages = signal<ChatMsg[]>([]);
-  sending = signal(false);
-  session = signal(0);
-  uploading = signal(false);
-  uploadMessage = signal<string | null>(null);
-  selectedModel = signal<string>("");
-  sessionPremiumRequests = signal<number>(0);
-  premiumQuota = signal<QuotaSnapshot | null>(null);
+  readonly messages = signal<ChatMsg[]>([]);
+  readonly sending = signal(false);
+  readonly session = signal(0);
+  readonly uploading = signal(false);
+  readonly uploadMessage = signal<string | null>(null);
+  readonly selectedModel = signal<string>("");
+  readonly sessionPremiumRequests = signal<number>(0);
+  readonly premiumQuota = signal<QuotaSnapshot | null>(null);
 
-  premiumRequestsFormatted = computed(() => {
+  readonly premiumRequestsFormatted = computed(() => {
     const n = Math.round(this.sessionPremiumRequests() * 100) / 100;
     return n % 1 === 0 ? n.toString() : n.toFixed(2);
   });
 
-  premiumQuotaDisplay = computed(() => {
+  readonly premiumQuotaDisplay = computed(() => {
     const q = this.premiumQuota();
     if (!q) return null;
     const remaining = Math.max(0, q.entitlementRequests - q.usedRequests);
@@ -56,11 +56,11 @@ export class ChatWidgetComponent implements OnInit {
     return { remaining, total: q.entitlementRequests, pct, resetDate };
   });
 
-  form = this.fb.group({
+  readonly form = this.fb.group({
     text: this.fb.control("", { validators: [Validators.required], nonNullable: true })
   });
 
-  constructor(private fb: FormBuilder, private chatApi: ChatApiService) {}
+  constructor(private readonly fb: FormBuilder, private readonly chatApi: ChatApiService) {}
 
   ngOnInit() {
     this.chatApi.getModels().subscribe({
@@ -145,7 +145,7 @@ export class ChatWidgetComponent implements OnInit {
 
     this.chatApi.uploadPdf(file).subscribe({
       next: (r) => {
-        const name = r.mdFile || file.name;
+        const name = r.mdFile ?? file.name;
         this.uploadMessage.set(`PDF caricato: ${name}`);
         this.uploading.set(false);
         input.value = "";

@@ -34,7 +34,9 @@ export class ChatApiService {
   }
 
   send(messages: ChatMsg[], model?: string) {
-    return this.http.post<{ reply: string; sources?: any[]; expensesChanged?: boolean }>(`${CHAT_BASE_URL}/chat`, { messages, model });
+    const body: Record<string, unknown> = { messages };
+    if (model !== undefined) body["model"] = model;
+    return this.http.post<{ reply: string; sources?: any[]; expensesChanged?: boolean }>(`${CHAT_BASE_URL}/chat`, body);
   }
 
   uploadPdf(file: File) {

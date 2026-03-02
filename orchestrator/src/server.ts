@@ -62,6 +62,77 @@ const toolCallSchema = z.object({
   args: z.record(z.any()).default({})
 });
 
+const MUTATING_TOOLS = new Set([
+  "expenses.create", "expenses.update", "expenses.delete", "expenses.deleteAll"
+]);
+
+type WorkingMsg = { role: "system" | "user" | "assistant"; content: string };
+
+async function executeTool(call: { tool: string; args: Record<string, unknown> }): Promise<unknown> {
+  switch (call.tool) {
+    case "expenses.list":      return listExpenses();
+    case "expenses.create":    return createExpense(call.args as { amount: number; date: string; currency?: string; category?: string; description?: string });
+    case "expenses.update":    return updateExpense(call.args.id as string, call.args.patch);
+    case "expenses.delete":    return deleteExpense(call.args.id as string);
+    case "expenses.deleteAll": return deleteAllExpenses();
+    case "web.search":         return webSearch(call.args.query as string);
+    default:                   return { error: `Tool sconosciuto: ${call.tool}` };
+  }
+}
+
+async function runToolLoop(
+  initialMsgs: WorkingMsg[],
+  system: string,
+  model: string | undefined,
+  intent: string
+): Promise<{ finalReply: string; expensesChanged: boolean }> {
+  const MAX_TOOL_STEPS = 4;
+  let workingMsgs = initialMsgs;
+  let expensesChanged = false;
+  let finalReply = "";
+
+  for (let step = 0; step < MAX_TOOL_STEPS; step++) {
+    const t0 = Date.now();
+    const draft = await chat([{ role: "system", content: system }, ...workingMsgs], model);
+    console.log(`[chat] LLM step ${step + 1}/${MAX_TOOL_STEPS}: ${Date.now() - t0}ms, intent=${intent}`);
+
+    const jsonStr = intent === "documents" ? null : extractToolCallJson(draft);
+    if (!jsonStr) { finalReply = draft; break; }
+
+    let toolCall: { tool: string; args: Record<string, unknown> };
+    try {
+      toolCall = toolCallSchema.parse(JSON.parse(jsonStr));
+    } catch {
+      finalReply = draft;
+      break;
+    }
+
+    let toolResult: unknown;
+    try {
+      toolResult = await executeTool(toolCall);
+      console.log(`[chat] tool executed: ${toolCall.tool}`);
+    } catch (err) {
+      console.error(`[chat] tool error (${toolCall.tool}):`, err);
+      toolResult = { error: String(err) };
+    }
+
+    if (MUTATING_TOOLS.has(toolCall.tool)) expensesChanged = true;
+
+    workingMsgs = [
+      ...workingMsgs,
+      { role: "assistant", content: `{"tool":"${toolCall.tool}","args":${JSON.stringify(toolCall.args)}}` },
+      { role: "user", content: `Tool result (${toolCall.tool}): ${JSON.stringify(toolResult)}` }
+    ];
+  }
+
+  if (!finalReply) {
+    console.warn("[chat] max tool steps reached, forcing final response");
+    finalReply = await chat([{ role: "system", content: system }, ...workingMsgs], model);
+  }
+
+  return { finalReply, expensesChanged };
+}
+
 /**
  * Estrae il primo oggetto JSON contenente la chiave "tool" dal testo.
  * Gestisce il caso in cui l'LLM includa testo libero prima/dopo il JSON.
@@ -295,76 +366,11 @@ ${contextBlock || "(vuoto)"}
 `.trim();
 
   const sources = docContext.map(c => c.meta);
-  const msgs = body.messages.map(m => ({ role: m.role, content: m.content }));
+  const msgs = body.messages.map(m => ({ role: m.role, content: m.content })) as WorkingMsg[];
 
-  // ─── Multi-step tool loop (max 4 iterazioni) ─────────────────────────────────
-  const MAX_TOOL_STEPS = 4;
-  type WorkingMsg = { role: "system" | "user" | "assistant"; content: string };
-  let workingMsgs: WorkingMsg[] = msgs;
-  let expensesChangedFlag = false;
-  let finalReply = "";
+  const { finalReply, expensesChanged } = await runToolLoop(msgs, system, body.model, intent);
 
-  for (let step = 0; step < MAX_TOOL_STEPS; step++) {
-    const t0 = Date.now();
-    const draft = await chat([
-      { role: "system", content: system },
-      ...workingMsgs,
-    ], body.model);
-    console.log(`[chat] LLM step ${step + 1}/${MAX_TOOL_STEPS}: ${Date.now() - t0}ms, intent=${intent}`);
-
-    // intent documents → nessun tool call, risposta diretta
-    const jsonStr = intent === "documents" ? null : extractToolCallJson(draft);
-    if (!jsonStr) {
-      finalReply = draft;
-      break;
-    }
-
-    let call: { tool: string; args: Record<string, unknown> };
-    try {
-      call = toolCallSchema.parse(JSON.parse(jsonStr));
-    } catch (err) {
-      console.warn("[chat] tool JSON parse error:", err);
-      finalReply = draft;
-      break;
-    }
-
-    let toolResult: unknown;
-    try {
-      switch (call.tool) {
-        case "expenses.list":    toolResult = await listExpenses(); break;
-        case "expenses.create":  toolResult = await createExpense(call.args as { amount: number; date: string; currency?: string; category?: string; description?: string }); break;
-        case "expenses.update":  toolResult = await updateExpense(call.args.id as string, call.args.patch); break;
-        case "expenses.delete":  toolResult = await deleteExpense(call.args.id as string); break;
-        case "expenses.deleteAll": toolResult = await deleteAllExpenses(); break;
-        case "web.search":       toolResult = await webSearch(call.args.query as string); break;
-        default: toolResult = { error: `Tool sconosciuto: ${call.tool}` };
-      }
-      console.log(`[chat] tool executed: ${call.tool}`);
-    } catch (err) {
-      console.error(`[chat] tool error (${call.tool}):`, err);
-      toolResult = { error: String(err) };
-    }
-
-    if (["expenses.create", "expenses.update", "expenses.delete", "expenses.deleteAll"].includes(call.tool)) {
-      expensesChangedFlag = true;
-    }
-
-    // Appende tool call + risultato alla storia per il prossimo step
-    workingMsgs = [
-      ...workingMsgs,
-      { role: "assistant", content: `{"tool":"${call.tool}","args":${JSON.stringify(call.args)}}` },
-      { role: "user", content: `Tool result (${call.tool}): ${JSON.stringify(toolResult)}` }
-    ];
-  }
-
-  if (!finalReply) {
-    // Iterazioni esaurite: forza risposta finale
-    console.warn("[chat] max tool steps reached, forcing final response");
-    const draft = await chat([{ role: "system", content: system }, ...workingMsgs], body.model);
-    finalReply = draft;
-  }
-
-  return res.json({ reply: sanitizeReply(finalReply), sources, expensesChanged: expensesChangedFlag });
+  return res.json({ reply: sanitizeReply(finalReply), sources, expensesChanged });
   } catch (err) {
     console.error("[chat] unhandled error", err);
     res.status(500).json({ error: "Errore interno del server. Riprova." });
