@@ -1,49 +1,13 @@
-import { createHash } from "crypto";
 import { embed } from "./embeddings.js";
 import { env } from "./config.js";
 import { listExpenses } from "./tools/expenses.js";
-
-type Expense = {
-  id: string;
-  amount: number;
-  currency?: string;
-  category?: string;
-  description?: string;
-  date: string;
-};
+import { cosine, expenseToText, hashExpenses, type Expense } from "./utils.js";
 
 type Indexed = {
   expense: Expense;
   text: string;
   embedding: number[];
 };
-
-function cosine(a: number[], b: number[]) {
-  let dot = 0, na = 0, nb = 0;
-  const n = Math.min(a.length, b.length);
-  for (let i = 0; i < n; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  return denom ? dot / denom : 0;
-}
-
-function expenseToText(e: Expense) {
-  const parts = [
-    `Spesa ${e.amount} ${e.currency ?? ""}`.trim(),
-    `data ${e.date}`,
-    e.category ? `categoria ${e.category}` : "",
-    e.description ? `descrizione ${e.description}` : ""
-  ].filter(Boolean);
-  return parts.join(", ");
-}
-
-function hashExpenses(expenses: Expense[]) {
-  const json = JSON.stringify(expenses);
-  return createHash("sha1").update(json).digest("hex");
-}
 
 export class ExpensesIndex {
   private cache: { hash: string; items: Indexed[] } | null = null;

@@ -12,145 +12,21 @@ import { chat } from "./llm.js";
 import { createVectorStore } from "./vectorstore/index.js";
 import { listExpenses, createExpense, updateExpense, deleteExpense } from "./tools/expenses.js";
 import { ExpensesIndex } from "./expenses-index.js";
+import {
+  isExplicitOutOfScope,
+  isExpenseHint,
+  isDocHint,
+  buildOutOfScopeReply,
+  sanitizeReply,
+  pickIntent,
+  slugify,
+  pdfTextToMarkdown,
+} from "./utils.js";
 
 const app = express();
 app.use(cors({ origin: ["http://localhost:4200"] }));
 app.use(express.json({ limit: "1mb" }));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
-
-const OUT_OF_SCOPE_KEYWORDS = [
-  "calcio",
-  "bitcoin",
-  "criptovalute",
-  "ricette",
-  "meteo",
-  "borsa"
-];
-
-const EXPENSE_KEYWORDS = [
-  "spesa",
-  "spese",
-  "speso",
-  "spendere",
-  "movimenti",
-  "transazioni",
-  "uscite",
-  "entrate",
-  "acquisti",
-  "pagamento",
-  "rimborso",
-  "rimborsi",
-  "categoria",
-  "valuta",
-  "importo",
-  "totale",
-  "budget",
-  "costo",
-  "pagato",
-  "pagamenti",
-  "data",
-  "descrizione"
-];
-
-const DOC_KEYWORDS = [
-  "pdf",
-  "documento",
-  "documenti",
-  "manuale",
-  "policy",
-  "contratto",
-  "allegato",
-  "fattura",
-  "ricevuta",
-  "regolamento"
-];
-
-function normalize(text: string) {
-  return text.toLowerCase();
-}
-
-function hasAny(text: string, keywords: string[]) {
-  return keywords.some(keyword => text.includes(keyword));
-}
-
-function isExplicitOutOfScope(text: string) {
-  return hasAny(normalize(text), OUT_OF_SCOPE_KEYWORDS);
-}
-
-function hasAmountHint(text: string) {
-  return /\\b\\d+[.,]\\d{1,2}\\b/.test(text) || /\\b(eur|usd|gbp|euro|dollari|sterline)\\b/i.test(text);
-}
-
-function isExpenseHint(text: string) {
-  const t = normalize(text);
-  return hasAny(t, EXPENSE_KEYWORDS) || hasAmountHint(t);
-}
-
-function isDocHint(text: string) {
-  return hasAny(normalize(text), DOC_KEYWORDS);
-}
-
-function buildOutOfScopeReply(domain: string) {
-  return [
-    `Sono un assistente demo per ${domain}. Posso aiutarti sulle funzioni dell'app e sulla gestione delle spese.`,
-    "Per domande fuori perimetro (es. argomenti generici non legati all'app) non posso rispondere.",
-    "Esempi: \"Elenca le mie spese\" oppure \"Aggiungi una spesa\""
-  ].join("\n");
-}
-
-function sanitizeReply(text: string) {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/__(.*?)__/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/^[\t ]*[*•–—]\s+/gm, "- ");
-}
-
-type Intent = "expenses" | "documents" | "clarify" | "unknown";
-
-function pickIntent(opts: {
-  expenseHint: boolean;
-  docHint: boolean;
-  expenseScore: number;
-  docScore: number;
-}) : Intent {
-  const expenseLikely = opts.expenseHint || opts.expenseScore >= env.EXPENSES_MIN_SCORE;
-  const docLikely = opts.docHint || opts.docScore >= env.DOC_MIN_SCORE;
-
-  if (expenseLikely && docLikely) {
-    if (opts.expenseHint && !opts.docHint) return "expenses";
-    if (opts.docHint && !opts.expenseHint) return "documents";
-    const delta = Math.abs(opts.expenseScore - opts.docScore);
-    if (delta >= env.INTENT_DELTA) {
-      return opts.expenseScore >= opts.docScore ? "expenses" : "documents";
-    }
-    return "clarify";
-  }
-
-  if (expenseLikely) return "expenses";
-  if (docLikely) return "documents";
-  return "unknown";
-}
-
-function slugify(input: string) {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
-
-function pdfTextToMarkdown(title: string, text: string) {
-  const paragraphs = text
-    .replace(/\r/g, "")
-    .split(/\n\s*\n/g)
-    .map(p => p.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-
-  const body = paragraphs.length ? paragraphs.join("\n\n") : text.trim();
-  const safeTitle = title.trim() || "Documento PDF";
-  return `# ${safeTitle}\n\n${body}\n`;
-}
 
 function getDataDir() {
   const __filename = fileURLToPath(import.meta.url);
@@ -264,7 +140,12 @@ app.post("/chat", async (req, res) => {
   const docScore = docCtx[0]?.score ?? 0;
   const expenseScore = expenseMatches[0]?.score ?? 0;
 
-  const intent = pickIntent({ expenseHint, docHint, expenseScore, docScore });
+  const intent = pickIntent({
+    expenseHint, docHint, expenseScore, docScore,
+    intentDelta: env.INTENT_DELTA,
+    expensesMinScore: env.EXPENSES_MIN_SCORE,
+    docMinScore: env.DOC_MIN_SCORE
+  });
 
   if (intent === "unknown") {
     return res.json({ reply: outOfScopeReply, sources: [] });
