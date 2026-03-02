@@ -27,3 +27,10 @@ export async function deleteExpense(id: string) {
   if (!useMcp()) return api.deleteExpense(id);
   return callMcpTool("expenses.delete", { id });
 }
+
+export async function deleteAllExpenses(): Promise<{ deleted: number }> {
+  const list = await listExpenses() as any[];
+  const expenses = Array.isArray(list) ? list : ((list as any).data ?? []);
+  await Promise.all(expenses.map((e: any) => deleteExpense(e.id)));
+  return { deleted: expenses.length };
+}

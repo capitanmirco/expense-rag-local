@@ -13,13 +13,18 @@ function Escape-PSLiteral([string]$value) {
 function Start-Terminal([string]$title, [string]$command, [string]$workdir) {
   $safeWorkdir = Escape-PSLiteral $workdir
   $safeTitle = Escape-PSLiteral $title
-  $cmd = "\$host.UI.RawUI.WindowTitle = '$safeTitle'; Set-Location -LiteralPath '$safeWorkdir'; $command"
+  $cmd = "`$host.UI.RawUI.WindowTitle = '$safeTitle'; Set-Location -LiteralPath '$safeWorkdir'; $command"
 
   Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $cmd -WorkingDirectory $workdir | Out-Null
 }
 
 if (-not $SkipChroma) {
-  Start-Terminal "Chroma" "chroma run --host localhost --port 8000 --path ./data/chroma" $root
+  $chromaCmd = if (Get-Command chroma -ErrorAction SilentlyContinue) {
+    "chroma run --host localhost --port 8000 --path ./data/chroma"
+  } else {
+    "py -m chroma run --host localhost --port 8000 --path ./data/chroma"
+  }
+  Start-Terminal "Chroma" $chromaCmd $root
 }
 
 if ($StartMcp) {

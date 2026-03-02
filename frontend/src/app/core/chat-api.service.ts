@@ -4,12 +4,37 @@ import { CHAT_BASE_URL } from "./api.config";
 
 export type ChatMsg = { role: "user" | "assistant"; content: string };
 
+export interface ModelOption {
+  id: string;
+  name: string;
+  multiplier: number;
+  /** Policy state from GitHub Copilot: "enabled" | "disabled" | "unconfigured" */
+  policy?: string;
+}
+
+export interface QuotaSnapshot {
+  isUnlimitedEntitlement?: boolean;
+  entitlementRequests: number;
+  usedRequests: number;
+  remainingPercentage: number;
+  overage: number;
+  resetDate?: string;
+}
+
 @Injectable({ providedIn: "root" })
 export class ChatApiService {
   constructor(private http: HttpClient) {}
 
-  send(messages: ChatMsg[]) {
-    return this.http.post<{ reply: string; sources?: any[] }>(`${CHAT_BASE_URL}/chat`, { messages });
+  getModels() {
+    return this.http.get<{ models: ModelOption[] }>(`${CHAT_BASE_URL}/models`);
+  }
+
+  getQuota() {
+    return this.http.get<{ quotaSnapshots: Record<string, QuotaSnapshot> }>(`${CHAT_BASE_URL}/quota`);
+  }
+
+  send(messages: ChatMsg[], model?: string) {
+    return this.http.post<{ reply: string; sources?: any[]; expensesChanged?: boolean }>(`${CHAT_BASE_URL}/chat`, { messages, model });
   }
 
   uploadPdf(file: File) {
