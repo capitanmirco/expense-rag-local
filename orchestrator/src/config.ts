@@ -36,7 +36,8 @@ const schema = z.object({
   DOC_K: z.coerce.number().min(1).default(4),
   EXPENSES_K: z.coerce.number().min(1).default(4),
   INTENT_DELTA: z.coerce.number().default(0.05),
-  EXPENSES_CACHE_TTL_MS: z.coerce.number().default(30000)
+  EXPENSES_CACHE_TTL_MS: z.coerce.number().default(30000),
+  LLM_TIMEOUT_MS: z.coerce.number().default(30000)
 });
 
 const raw = schema.parse(process.env);

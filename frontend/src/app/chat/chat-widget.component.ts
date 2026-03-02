@@ -36,7 +36,9 @@ export class ChatWidgetComponent {
     const text = this.form.getRawValue().text.trim();
     if (!text) return;
 
-    const next = [...this.messages(), { role: "user", content: text } as ChatMsg];
+    const MAX_HISTORY = 50;
+    const all = [...this.messages(), { role: "user", content: text } as ChatMsg];
+    const next = all.length > MAX_HISTORY ? all.slice(all.length - MAX_HISTORY) : all;
     this.messages.set(next);
     this.form.reset();
 

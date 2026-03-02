@@ -12,6 +12,9 @@ node_modules/
 .env.local
 .env.*.local
 
+# Claude local settings (personal overrides)
+.claude/settings.local.json
+
 # Build output
 dist/
 build/

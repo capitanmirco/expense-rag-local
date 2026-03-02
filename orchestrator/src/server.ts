@@ -220,57 +220,40 @@ ${contextBlock || "(vuoto)"}
 
   const sources = docContext.map(c => c.meta);
 
+  const toolCallSchema = z.object({
+    tool: z.enum(["expenses.list", "expenses.create", "expenses.update", "expenses.delete"]),
+    args: z.record(z.any()).default({})
+  });
+
+  async function runToolAndReply(toolName: string, toolFn: () => Promise<unknown>) {
+    const data = await toolFn();
+    console.log(`[chat] tool executed: ${toolName}`);
+    const final = await chat([
+      { role: "system", content: system },
+      ...body.messages.map(m => ({ role: m.role, content: m.content })),
+      { role: "assistant", content: `Tool result (${toolName}): ${JSON.stringify(data)}` }
+    ]);
+    return res.json({ reply: sanitizeReply(final), sources });
+  }
+
+  const t0 = Date.now();
   const draft = await chat([
     { role: "system", content: system },
     ...body.messages.map(m => ({ role: m.role, content: m.content })),
   ]);
+  console.log(`[chat] LLM first call: ${Date.now() - t0}ms, intent=${intent}`);
 
   const maybe = draft.trim();
   if (intent === "expenses" && maybe.startsWith("{") && maybe.endsWith("}")) {
     try {
-      const call = JSON.parse(maybe) as { tool: string; args: any };
+      const call = toolCallSchema.parse(JSON.parse(maybe));
 
-      if (call.tool === "expenses.list") {
-        const data = await listExpenses();
-        const final = await chat([
-          { role: "system", content: system },
-          ...body.messages.map(m => ({ role: m.role, content: m.content })),
-          { role: "assistant", content: `Tool result (expenses.list): ${JSON.stringify(data)}` }
-        ]);
-        return res.json({ reply: sanitizeReply(final), sources });
-      }
-
-      if (call.tool === "expenses.create") {
-        const data = await createExpense(call.args);
-        const final = await chat([
-          { role: "system", content: system },
-          ...body.messages.map(m => ({ role: m.role, content: m.content })),
-          { role: "assistant", content: `Tool result (expenses.create): ${JSON.stringify(data)}` }
-        ]);
-        return res.json({ reply: sanitizeReply(final), sources });
-      }
-
-      if (call.tool === "expenses.update") {
-        const data = await updateExpense(call.args.id, call.args.patch);
-        const final = await chat([
-          { role: "system", content: system },
-          ...body.messages.map(m => ({ role: m.role, content: m.content })),
-          { role: "assistant", content: `Tool result (expenses.update): ${JSON.stringify(data)}` }
-        ]);
-        return res.json({ reply: sanitizeReply(final), sources });
-      }
-
-      if (call.tool === "expenses.delete") {
-        const data = await deleteExpense(call.args.id);
-        const final = await chat([
-          { role: "system", content: system },
-          ...body.messages.map(m => ({ role: m.role, content: m.content })),
-          { role: "assistant", content: `Tool result (expenses.delete): ${JSON.stringify(data)}` }
-        ]);
-        return res.json({ reply: sanitizeReply(final), sources });
-      }
-    } catch {
-      // ignore
+      if (call.tool === "expenses.list") return runToolAndReply("expenses.list", () => listExpenses());
+      if (call.tool === "expenses.create") return runToolAndReply("expenses.create", () => createExpense(call.args));
+      if (call.tool === "expenses.update") return runToolAndReply("expenses.update", () => updateExpense(call.args.id, call.args.patch));
+      if (call.tool === "expenses.delete") return runToolAndReply("expenses.delete", () => deleteExpense(call.args.id));
+    } catch (err) {
+      console.error("[chat] tool JSON parse/exec error", err);
     }
   }
 
