@@ -17,6 +17,26 @@ export class ExpensesPageComponent implements OnDestroy {
   modalOpen = signal(false);
   pageIndex = signal(0);
   pageSize = 5;
+  darkMode = signal(false);
+
+  private readonly LS_KEY = "theme";
+
+  private applyTheme(dark: boolean) {
+    const html = this.document.documentElement;
+    if (dark) {
+      html.classList.add("dark");
+      html.classList.remove("light");
+    } else {
+      html.classList.add("light");
+      html.classList.remove("dark");
+    }
+    this.darkMode.set(dark);
+    localStorage.setItem(this.LS_KEY, dark ? "dark" : "light");
+  }
+
+  toggleDarkMode() {
+    this.applyTheme(!this.darkMode());
+  }
 
   form = this.fb.group({
     date: this.fb.control<string>("", { validators: [Validators.required], nonNullable: true }),
@@ -30,6 +50,10 @@ export class ExpensesPageComponent implements OnDestroy {
     private api: ExpensesApiService,
     @Inject(DOCUMENT) private document: Document
   ) {
+    // Ripristina tema da localStorage, o segue OS se non salvato
+    const saved = localStorage.getItem(this.LS_KEY);
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    this.applyTheme(saved === "dark" || (!saved && prefersDark));
     this.reload();
   }
 

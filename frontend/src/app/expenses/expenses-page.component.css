@@ -39,6 +39,38 @@ app-chat-widget { display: block; }
   color: var(--muted);
   max-width: 520px;
 }
+.hero-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+.theme-toggle {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.theme-toggle:hover {
+  transform: translateY(-1px);
+}
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.theme-toggle svg circle,
+.theme-toggle svg path {
+  fill: none;
+}
 .hero-panel {
   background: var(--card);
   border: 1px solid var(--border);
@@ -181,7 +213,7 @@ tbody td {
   word-break: break-word;
 }
 tbody tr {
-  border-bottom: 1px solid rgba(31, 39, 34, 0.08);
+  border-bottom: 1px solid var(--border);
 }
 thead th:not(:first-child),
 tbody td:not(:first-child) {

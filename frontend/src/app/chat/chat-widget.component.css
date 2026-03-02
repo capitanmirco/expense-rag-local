@@ -159,7 +159,7 @@
   max-width: 80%;
   padding: 10px 12px;
   border-radius: 14px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   box-shadow: 0 8px 16px rgba(16, 24, 20, 0.08);
   line-height: 1.4;
