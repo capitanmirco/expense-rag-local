@@ -1,0 +1,124 @@
+.chat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chat-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.chat-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #16a34a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.16);
+}
+.status.busy .dot {
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.16);
+}
+.btn.icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 10px;
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.file-input {
+  display: none;
+}
+
+.log {
+  height: 260px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.msg {
+  display: flex;
+}
+.msg.user {
+  justify-content: flex-end;
+}
+.bubble {
+  max-width: 80%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 16px rgba(16, 24, 20, 0.08);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.msg.user .bubble {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.28);
+}
+.composer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.composer input {
+  flex: 1;
+}
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+.upload-status {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .composer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

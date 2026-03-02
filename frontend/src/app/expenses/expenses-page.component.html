@@ -1,0 +1,146 @@
+<div class="page">
+  <header class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">Expense RAG</p>
+      <h1>Spese chiare, decisioni rapide.</h1>
+      <p class="sub">Aggiungi, modifica e chiedi al chatbot con linguaggio naturale.</p>
+    </div>
+    <div class="hero-panel">
+      <div class="panel-line">
+        <span>Valuta</span>
+        <strong>EUR</strong>
+      </div>
+      <div class="panel-line">
+        <span>Voci</span>
+        <strong>{{ items().length }}</strong>
+      </div>
+    </div>
+  </header>
+
+  <section class="grid">
+    <div class="card form-card">
+      <div class="card-head">
+        <h2>{{ editingId() ? "Modifica spesa" : "Nuova spesa" }}</h2>
+        <span class="badge">{{ editingId() ? "Edit" : "New" }}</span>
+      </div>
+
+      <form class="expense-form" [formGroup]="form" (ngSubmit)="save()">
+        <label>
+          <span>Data</span>
+          <input type="date" formControlName="date" />
+        </label>
+        <label>
+          <span>Importo</span>
+          <input type="number" step="0.01" placeholder="0.00" formControlName="amount" />
+        </label>
+        <label>
+          <span>Categoria</span>
+          <input type="text" placeholder="Categoria" formControlName="category" />
+        </label>
+        <label class="full">
+          <span>Descrizione</span>
+          <input type="text" placeholder="Descrizione" formControlName="description" />
+        </label>
+        <div class="form-actions">
+          <button class="btn primary" type="submit" [disabled]="form.invalid">
+            {{ editingId() ? "Aggiorna" : "Aggiungi" }}
+          </button>
+          <button class="btn ghost" type="button" (click)="reset()">Reset</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card list-card">
+      <div class="card-head">
+        <h2>Movimenti</h2>
+        <div class="head-actions">
+          <span class="count">{{ items().length }} voci</span>
+          <button class="btn ghost icon" type="button" (click)="openModal()" aria-label="Apri tabella completa" title="Apri tabella completa">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th><th>Importo</th><th>Categoria</th><th>Descrizione</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngIf="items().length === 0">
+              <td colspan="5" class="empty">Nessuna spesa ancora.</td>
+            </tr>
+            <tr *ngFor="let e of pagedItems()">
+              <td>{{ e.date }}</td>
+              <td>{{ e.amount }} {{ e.currency }}</td>
+              <td>{{ e.category }}</td>
+              <td>{{ e.description }}</td>
+              <td class="actions">
+                <button class="btn ghost small" type="button" (click)="edit(e)">Modifica</button>
+                <button class="btn danger small" type="button" (click)="del(e)">Elimina</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="paginator">
+        <button class="btn ghost small" type="button" (click)="prevPage()" [disabled]="pageIndex() === 0">
+          Precedente
+        </button>
+        <span class="page-info">
+          {{ pageStart() }}-{{ pageEnd() }} di {{ items().length }}
+        </span>
+        <button class="btn ghost small" type="button" (click)="nextPage()" [disabled]="pageIndex() >= pageCount() - 1">
+          Successivo
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <div class="modal" *ngIf="modalOpen()">
+    <div class="modal-backdrop" (click)="closeModal()"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Tutte le spese" (click)="$event.stopPropagation()">
+      <div class="modal-head">
+        <h3>Movimenti - tutte le spese</h3>
+        <button class="btn ghost icon" type="button" (click)="closeModal()" aria-label="Chiudi">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6l12 12M18 6l-12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th><th>Importo</th><th>Categoria</th><th>Descrizione</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngIf="items().length === 0">
+                <td colspan="5" class="empty">Nessuna spesa ancora.</td>
+              </tr>
+              <tr *ngFor="let e of items()">
+                <td>{{ e.date }}</td>
+                <td>{{ e.amount }} {{ e.currency }}</td>
+                <td>{{ e.category }}</td>
+                <td>{{ e.description }}</td>
+                <td class="actions">
+                  <button class="btn ghost small" type="button" (click)="edit(e)">Modifica</button>
+                  <button class="btn danger small" type="button" (click)="del(e)">Elimina</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <app-chat-widget />
+</div>

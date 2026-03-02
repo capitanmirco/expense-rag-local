@@ -1,0 +1,36 @@
+<section class="chat">
+  <div class="chat-head">
+    <div>
+      <p class="eyebrow">Assistente</p>
+      <h2>Chatbot RAG</h2>
+    </div>
+    <div class="head-actions">
+      <input #fileInput class="file-input" type="file" accept="application/pdf" (change)="uploadFile($event)" />
+      <button class="btn ghost" type="button" (click)="fileInput.click()" [disabled]="uploading()">
+        {{ uploading() ? "Caricamento..." : "Carica PDF" }}
+      </button>
+      <button class="btn ghost icon" type="button" (click)="newChat()" aria-label="Nuova chat">+</button>
+      <div class="status" [class.busy]="sending()">
+        <span class="dot"></span>
+        {{ sending() ? "Sto scrivendo" : "Pronto" }}
+      </div>
+    </div>
+  </div>
+
+  <div class="log">
+    <div class="msg" *ngFor="let m of messages()" [class.user]="m.role === 'user'">
+      <div class="bubble">{{ m.content }}</div>
+    </div>
+  </div>
+
+  <form class="composer" [formGroup]="form" (ngSubmit)="send()">
+    <input placeholder="Chiedi qualcosa..." formControlName="text" />
+    <button class="btn primary" type="submit" [disabled]="form.invalid || sending()">Invia</button>
+  </form>
+
+  <p class="upload-status" *ngIf="uploadMessage()">{{ uploadMessage() }}</p>
+
+  <p class="hint">
+    Suggerimenti: "Elenca le mie spese", "Aggiungi una spesa: 12.50 EUR il 2026-01-27 categoria food descrizione pizza". Fuori perimetro: "Che tempo fa oggi?"
+  </p>
+</section>

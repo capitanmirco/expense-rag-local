@@ -1,0 +1,45 @@
+
+# Ignore vscode AI rules
+.github/instructions/codacy.instructions.md
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables (contain API keys!)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+.angular/
+out-tsc/
+
+# SQLite databases (contain personal data)
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+
+# Chroma vector store data
+data/chroma/
+orchestrator/data/chroma/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# TypeScript cache
+*.tsbuildinfo
