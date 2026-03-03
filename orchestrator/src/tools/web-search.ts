@@ -10,6 +10,8 @@
 import { env } from "../config.js";
 import { isFinanceWebHint } from "../utils.js";
 
+const WEBSEARCH_TIMEOUT_MS = 8_000;
+
 export interface WebSearchResult {
   title: string;
   url: string;
@@ -39,13 +41,22 @@ async function braveSearch(query: string, count = 5): Promise<WebSearchResult[]>
   url.searchParams.set("country", "IT");
   url.searchParams.set("freshness", "pweek"); // ultimi 7 giorni preferiti
 
-  const r = await fetch(url.toString(), {
-    headers: {
-      "Accept": "application/json",
-      "Accept-Encoding": "gzip",
-      "X-Subscription-Token": env.WEBSEARCH_API_KEY
-    }
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), WEBSEARCH_TIMEOUT_MS);
+
+  let r: Response;
+  try {
+    r = await fetch(url.toString(), {
+      headers: {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": env.WEBSEARCH_API_KEY
+      },
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!r.ok) {
     const body = await r.text().catch(() => "");
@@ -68,9 +79,18 @@ async function braveSearch(query: string, count = 5): Promise<WebSearchResult[]>
 async function duckduckgoSearch(query: string): Promise<WebSearchResult[]> {
   const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1&kl=it-it`;
 
-  const r = await fetch(url, {
-    headers: { "User-Agent": "expense-rag-local/1.0 (finance assistant)" }
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), WEBSEARCH_TIMEOUT_MS);
+
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      headers: { "User-Agent": "expense-rag-local/1.0 (finance assistant)" },
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!r.ok) throw new Error(`DuckDuckGo API error: ${r.status}`);
 
@@ -136,6 +156,7 @@ export async function webSearch(query: string): Promise<WebSearchResponse> {
     }
   } catch (err) {
     console.error("[web-search] error:", err);
-    return { error: `Errore durante la ricerca: ${String(err)}`, query };
+    const isTimeout = err instanceof Error && err.name === "AbortError";
+    return { error: isTimeout ? "Timeout durante la ricerca web." : "Errore durante la ricerca web. Riprova più tardi.", query };
   }
 }

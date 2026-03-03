@@ -108,13 +108,13 @@ export class ChromaStore implements VectorStore {
       ...(options?.filter ? { where: options.filter } : {})
     });
 
-    const docs = (res.documents?.[0] ?? []).map((text, i) => {
+    const docs = (res.documents?.[0] ?? []).map((text: string | null, i: number) => {
       const distance = res.distances?.[0]?.[i] ?? 999;
       // convert distance -> score (rough)
       const score = 1 / (1 + distance);
       return {
-        text,
-        meta: (res.metadatas?.[0]?.[i] ?? {}) as Record<string, any>,
+        text: text ?? "",
+        meta: (res.metadatas?.[0]?.[i] ?? {}) as Record<string, unknown>,
         score
       };
     });

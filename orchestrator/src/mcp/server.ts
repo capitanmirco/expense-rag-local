@@ -61,10 +61,10 @@ const rpcSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.union([z.string(), z.number()]),
   method: z.string(),
-  params: z.any().optional()
+  params: z.unknown().optional()
 });
 
-function ok(id: string | number, result: any) {
+function ok(id: string | number, result: unknown) {
   return { jsonrpc: "2.0", id, result };
 }
 
@@ -79,6 +79,7 @@ app.post("/rpc", async (req, res) => {
   }
 
   const { id, method, params } = parsed.data;
+  const p = params as Record<string, unknown> | undefined;
 
   try {
     if (method === "tools/list") {
@@ -86,8 +87,8 @@ app.post("/rpc", async (req, res) => {
     }
 
     if (method === "tools/call") {
-      const name = params?.name as string | undefined;
-      const args = params?.arguments ?? {};
+      const name = p?.name as string | undefined;
+      const args = (p?.arguments ?? {}) as Record<string, unknown>;
       if (!name) return res.json(err(id, "Missing tool name", -32602));
 
       if (name === "expenses.list") {
@@ -95,15 +96,15 @@ app.post("/rpc", async (req, res) => {
         return res.json(ok(id, { content: [{ type: "json", json: data }] }));
       }
       if (name === "expenses.create") {
-        const data = await createExpense(args);
+        const data = await createExpense(args as Parameters<typeof createExpense>[0]);
         return res.json(ok(id, { content: [{ type: "json", json: data }] }));
       }
       if (name === "expenses.update") {
-        const data = await updateExpense(args.id, args.patch);
+        const data = await updateExpense(args.id as string, args.patch as Record<string, unknown>);
         return res.json(ok(id, { content: [{ type: "json", json: data }] }));
       }
       if (name === "expenses.delete") {
-        const data = await deleteExpense(args.id);
+        const data = await deleteExpense(args.id as string);
         return res.json(ok(id, { content: [{ type: "json", json: data }] }));
       }
 
@@ -111,8 +112,8 @@ app.post("/rpc", async (req, res) => {
     }
 
     return res.json(err(id, `Method not found: ${method}`, -32601));
-  } catch (e: any) {
-    const msg = e?.message ?? "Internal error";
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Internal error";
     return res.json(err(id, msg, -32000));
   }
 });

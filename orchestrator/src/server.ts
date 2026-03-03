@@ -72,7 +72,7 @@ async function executeTool(call: { tool: string; args: Record<string, unknown> }
   switch (call.tool) {
     case "expenses.list":      return listExpenses();
     case "expenses.create":    return createExpense(call.args as { amount: number; date: string; currency?: string; category?: string; description?: string });
-    case "expenses.update":    return updateExpense(call.args.id as string, call.args.patch);
+    case "expenses.update":    return updateExpense(call.args.id as string, call.args.patch as Record<string, unknown>);
     case "expenses.delete":    return deleteExpense(call.args.id as string);
     case "expenses.deleteAll": return deleteAllExpenses();
     case "web.search":         return webSearch(call.args.query as string);
@@ -195,15 +195,31 @@ app.get("/quota", async (_, res) => {
 });
 
 app.post("/rag/search", async (req, res) => {
-  const body = ragSearchSchema.parse(req.body);
-  const results = await store.query(body.query, body.k ?? 5, body.filter ? { filter: body.filter } : undefined);
-  res.json({ results });
+  try {
+    const body = ragSearchSchema.parse(req.body);
+    const results = await store.query(body.query, body.k ?? 5, body.filter ? { filter: body.filter } : undefined);
+    res.json({ results });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: "Parametri non validi.", details: err.issues });
+    }
+    console.error("[rag/search] error", err);
+    res.status(500).json({ error: "Errore durante la ricerca RAG." });
+  }
 });
 
 app.post("/rag/ingest", async (req, res) => {
-  const body = ragIngestSchema.parse(req.body);
-  const out = await store.upsert(body.docs);
-  res.json(out);
+  try {
+    const body = ragIngestSchema.parse(req.body);
+    const out = await store.upsert(body.docs);
+    res.json(out);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: "Parametri non validi.", details: err.issues });
+    }
+    console.error("[rag/ingest] error", err);
+    res.status(500).json({ error: "Errore durante l'ingestione RAG." });
+  }
 });
 
 app.post("/rag/upload", upload.single("file"), async (req, res) => {
