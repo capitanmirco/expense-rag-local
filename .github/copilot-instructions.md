@@ -4,7 +4,7 @@
 
 This is a **3-service RAG (Retrieval Augmented Generation) application** for managing personal expenses with AI chat capabilities:
 
-- **Frontend** (Angular 19, port 4200): UI for CRUD operations + chat widget
+- **Frontend** (Angular 21, port 4200): UI for CRUD operations + chat widget
 - **API** (NestJS, port 3000): REST API for expenses, backed by SQLite (`api/data/expenses.sqlite`)
 - **Orchestrator** (Express, port 3001): RAG pipeline + LLM chat + tool execution
 
@@ -89,7 +89,7 @@ Default: `Xenova/all-MiniLM-L6-v2` model (384-dim vectors).
 
 ## Angular Frontend Conventions
 
-- **Standalone components**: No NgModules (Angular 19)
+- **Standalone components**: No NgModules (Angular 21)
 - **API services**: Injected via `providedIn: 'root'` (see [core/](frontend/src/app/core/))
 - **Base URLs**: Centralized in [api.config.ts](frontend/src/app/core/api.config.ts)
   - `API_BASE_URL = "http://localhost:3000"`

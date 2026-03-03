@@ -19,7 +19,7 @@ flowchart LR
 
 ## Componenti principali
 
-### 1. Frontend (Angular 19)
+### 1. Frontend (Angular 21)
 - UI CRUD spese + chat widget standalone.
 - Porta: `http://localhost:4200`.
 - Comunica con l'orchestrator per `/chat`, `/models`, `/quota` e con la Nest API per il CRUD.
@@ -37,7 +37,7 @@ flowchart LR
 
 ## Tecnologie usate
 
-- **Angular 19**: frontend reattivo con componenti standalone e Angular Signals.
+- **Angular 21**: frontend reattivo con componenti standalone e Angular Signals.
 - **NestJS**: backend API con TypeORM e SQLite.
 - **Express**: server leggero per chat, RAG e tool.
 - **`@github/copilot-sdk`**: client LLM principale — wrappa la CLI di GitHub Copilot e gestisce sessioni e modelli.

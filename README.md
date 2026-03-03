@@ -2,7 +2,7 @@
 
 Questo progetto contiene 3 app separate (apri la cartella `expense-rag-local` in VS Code):
 
-- `frontend/` — Angular 19: UI CRUD spese + chat widget con selezione modello e monitoraggio quota
+- `frontend/` — Angular 21: UI CRUD spese + chat widget con selezione modello e monitoraggio quota
 - `api/` — NestJS: REST API spese + SQLite locale
 - `orchestrator/` — Node.js (Express): pipeline RAG + routing intent + tool + LLM via `@github/copilot-sdk` (o provider OpenAI-compatible)
 
