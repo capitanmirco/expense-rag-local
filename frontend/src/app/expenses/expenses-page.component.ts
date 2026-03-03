@@ -12,13 +12,33 @@ import { ChatWidgetComponent } from "../chat/chat-widget.component";
   styleUrls: ["./expenses-page.component.css"]
 })
 export class ExpensesPageComponent implements OnDestroy {
-  items = signal<Expense[]>([]);
-  editingId = signal<string | null>(null);
-  modalOpen = signal(false);
-  pageIndex = signal(0);
-  pageSize = 5;
+  readonly items = signal<Expense[]>([]);
+  readonly editingId = signal<string | null>(null);
+  readonly modalOpen = signal(false);
+  readonly pageIndex = signal(0);
+  readonly pageSize = 5;
+  readonly darkMode = signal(false);
 
-  form = this.fb.group({
+  private readonly LS_KEY = "theme";
+
+  private applyTheme(dark: boolean) {
+    const html = this.document.documentElement;
+    if (dark) {
+      html.classList.add("dark");
+      html.classList.remove("light");
+    } else {
+      html.classList.add("light");
+      html.classList.remove("dark");
+    }
+    this.darkMode.set(dark);
+    localStorage.setItem(this.LS_KEY, dark ? "dark" : "light");
+  }
+
+  toggleDarkMode() {
+    this.applyTheme(!this.darkMode());
+  }
+
+  readonly form = this.fb.group({
     date: this.fb.control<string>("", { validators: [Validators.required], nonNullable: true }),
     amount: this.fb.control<number>(0, { validators: [Validators.required, Validators.min(0)], nonNullable: true }),
     category: this.fb.control<string>("general", { nonNullable: true }),
@@ -26,10 +46,14 @@ export class ExpensesPageComponent implements OnDestroy {
   });
 
   constructor(
-    private fb: FormBuilder,
-    private api: ExpensesApiService,
-    @Inject(DOCUMENT) private document: Document
+    private readonly fb: FormBuilder,
+    private readonly api: ExpensesApiService,
+    @Inject(DOCUMENT) private readonly document: Document
   ) {
+    // Ripristina tema da localStorage, o segue OS se non salvato
+    const saved = localStorage.getItem(this.LS_KEY);
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    this.applyTheme(saved === "dark" || (!saved && prefersDark));
     this.reload();
   }
 

@@ -1,5 +1,6 @@
 import { TestBed } from "@angular/core/testing";
-import { HttpClientTestingModule, HttpTestingController } from "@angular/common/http/testing";
+import { provideHttpClientTesting, HttpTestingController } from "@angular/common/http/testing";
+import { provideHttpClient } from "@angular/common/http";
 import { ExpensesApiService, Expense } from "./expenses-api.service";
 import { API_BASE_URL } from "./api.config";
 
@@ -18,8 +19,7 @@ describe("ExpensesApiService", () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
-      providers: [ExpensesApiService],
+      providers: [ExpensesApiService, provideHttpClient(), provideHttpClientTesting()],
     });
     service = TestBed.inject(ExpensesApiService);
     httpMock = TestBed.inject(HttpTestingController);

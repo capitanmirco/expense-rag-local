@@ -1,12 +1,21 @@
 import OpenAI from "openai";
 import { env } from "./config.js";
+import { chatViaCopilotSdk } from "./llm-copilot.js";
 
 export const llm = new OpenAI({
   apiKey: env.LLM_API_KEY,
   baseURL: env.LLM_BASE_URL
 });
 
-export async function chat(messages: { role: "system" | "user" | "assistant"; content: string }[]) {
+export async function chat(
+  messages: { role: "system" | "user" | "assistant"; content: string }[],
+  model?: string
+) {
+  // Provider: Copilot SDK
+  if (env.LLM_PROVIDER === "copilot") {
+    return chatViaCopilotSdk(messages, model);
+  }
+
   if (!env.LLM_API_KEY || !env.LLM_MODEL) {
     // modalità "dry": utile per avviare il progetto senza chiavi
     return "LLM non configurato. Imposta GROQ_API_KEY e GROQ_MODEL (o LLM_API_KEY e LLM_MODEL) in orchestrator/.env";
@@ -17,7 +26,7 @@ export async function chat(messages: { role: "system" | "user" | "assistant"; co
   );
 
   const completion = llm.chat.completions.create({
-    model: env.LLM_MODEL,
+    model: model ?? env.LLM_MODEL,
     messages,
     temperature: 0.2
   });

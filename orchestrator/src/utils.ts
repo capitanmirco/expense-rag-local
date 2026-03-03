@@ -7,11 +7,8 @@ import { createHash } from "crypto";
 
 export const OUT_OF_SCOPE_KEYWORDS = [
   "calcio",
-  "bitcoin",
-  "criptovalute",
   "ricette",
-  "meteo",
-  "borsa"
+  "meteo"
 ];
 
 export const EXPENSE_KEYWORDS = [
@@ -27,6 +24,28 @@ export const DOC_KEYWORDS = [
   "pdf", "documento", "documenti", "manuale", "policy",
   "contratto", "allegato", "fattura", "ricevuta", "regolamento"
 ];
+
+export const WEB_FINANCE_KEYWORDS = [
+  "risparmio", "risparmi", "risparmiare", "risparmiatore",
+  "finanza", "finanziario", "economia", "economico",
+  "investimento", "investire", "investimenti",
+  "inflazione", "tasso", "interessi",
+  "mutuo", "prestito", "prestiti", "finanziamento",
+  "banca", "bancario", "conto corrente",
+  "stipendio", "salario", "reddito", "pensione",
+  "tasse", "iva", "detrazioni", "imu", "irpef",
+  "bolletta", "utenze", "affitto", "assicurazione", "polizza",
+  "borsa", "azioni", "obbligazioni", "etf", "fondo",
+  "rendimento", "dividendo", "portafoglio",
+  "bitcoin", "criptovalute", "crypto",
+  "valuta", "cambio", "euro", "dollaro",
+  "prezzo", "prezzi", "rincaro", "costo della vita",
+  "consumi", "consumo", "potere d'acquisto"
+];
+
+export function isFinanceWebHint(text: string): boolean {
+  return hasAny(normalize(text), WEB_FINANCE_KEYWORDS);
+}
 
 // ─── Text helpers ─────────────────────────────────────────────────────────────
 
@@ -71,7 +90,7 @@ export function sanitizeReply(text: string): string {
     .replace(/^[\t ]*[*•–—]\s+/gm, "- ");
 }
 
-export type Intent = "expenses" | "documents" | "clarify" | "unknown";
+export type Intent = "expenses" | "documents" | "web" | "clarify" | "unknown";
 
 export interface PickIntentOptions {
   expenseHint: boolean;
@@ -116,7 +135,7 @@ export function slugify(input: string): string {
   return input
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/(?:^-+|-+$)/g, "")
     .slice(0, 80);
 }
 

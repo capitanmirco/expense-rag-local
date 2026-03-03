@@ -1,5 +1,6 @@
 import { TestBed } from "@angular/core/testing";
-import { HttpClientTestingModule, HttpTestingController } from "@angular/common/http/testing";
+import { provideHttpClientTesting, HttpTestingController } from "@angular/common/http/testing";
+import { provideHttpClient } from "@angular/common/http";
 import { ChatApiService, ChatMsg } from "./chat-api.service";
 import { CHAT_BASE_URL } from "./api.config";
 
@@ -14,8 +15,7 @@ describe("ChatApiService", () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
-      providers: [ChatApiService],
+      providers: [ChatApiService, provideHttpClient(), provideHttpClientTesting()],
     });
     service = TestBed.inject(ChatApiService);
     httpMock = TestBed.inject(HttpTestingController);

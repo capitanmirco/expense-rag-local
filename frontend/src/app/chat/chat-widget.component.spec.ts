@@ -7,6 +7,8 @@ import { ChatApiService } from "../core/chat-api.service";
 const chatServiceMock = {
   send: jasmine.createSpy("send"),
   uploadPdf: jasmine.createSpy("uploadPdf"),
+  getModels: jasmine.createSpy("getModels").and.returnValue(of({ models: [] })),
+  getQuota: jasmine.createSpy("getQuota").and.returnValue(of({ quotaSnapshots: {} })),
 };
 
 describe("ChatWidgetComponent", () => {

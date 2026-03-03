@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cmd /c \"cd /d \"\"c:\\\\Users\\\\mmennonna\\\\VsCodeProjects\\\\Progetti personali\\\\expense-rag-local\\\\orchestrator\"\" && npm test 2>&1\")"
+      "Bash(cmd /c \"cd /d \"\"c:\\\\Users\\\\mmennonna\\\\VsCodeProjects\\\\Progetti personali\\\\expense-rag-local\\\\orchestrator\"\" && npm test 2>&1\")",
+      "WebFetch(domain:github.com)",
+      "Read(//c/Users/mmennonna/VsCodeProjects/Progetti/ personali/expense-rag-local/frontend/src/**)"
     ]
   }
 }

@@ -56,8 +56,12 @@ describe("isExplicitOutOfScope", () => {
     expect(isExplicitOutOfScope("chi ha vinto la partita di calcio?")).toBe(true);
   });
 
-  it("detects 'bitcoin' as out of scope", () => {
-    expect(isExplicitOutOfScope("quanto vale un bitcoin oggi?")).toBe(true);
+  it("does NOT flag 'bitcoin' as out of scope (handled via web.search)", () => {
+    expect(isExplicitOutOfScope("quanto vale un bitcoin oggi?")).toBe(false);
+  });
+
+  it("detects 'ricette' as out of scope", () => {
+    expect(isExplicitOutOfScope("hai ricette facili per la carbonara?")).toBe(true);
   });
 
   it("detects 'meteo' as out of scope", () => {

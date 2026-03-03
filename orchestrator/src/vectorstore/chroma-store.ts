@@ -50,21 +50,24 @@ function chunkText(text: string, maxChars = 900): string[] {
 
 export class ChromaStore implements VectorStore {
   private client = new ChromaClient(getChromaClientArgs());
+  private col: any = null;
 
   private async getCollection() {
+    if (this.col) return this.col;
     const embeddingFunction = getChromaEmbeddingFunction();
     try {
-      return await this.client.getCollection({
+      this.col = await this.client.getCollection({
         name: env.CHROMA_COLLECTION,
         ...(embeddingFunction ? { embeddingFunction } : {})
       });
     } catch {
-      return await this.client.createCollection({
+      this.col = await this.client.createCollection({
         name: env.CHROMA_COLLECTION,
         // We always send embeddings explicitly, so avoid the default embedding function unless enabled.
         embeddingFunction: embeddingFunction ?? null
       });
     }
+    return this.col;
   }
 
   async upsert(docs: { id: string; text: string; meta?: Record<string, any> }[]) {
@@ -105,13 +108,13 @@ export class ChromaStore implements VectorStore {
       ...(options?.filter ? { where: options.filter } : {})
     });
 
-    const docs = (res.documents?.[0] ?? []).map((text, i) => {
+    const docs = (res.documents?.[0] ?? []).map((text: string | null, i: number) => {
       const distance = res.distances?.[0]?.[i] ?? 999;
       // convert distance -> score (rough)
       const score = 1 / (1 + distance);
       return {
-        text,
-        meta: (res.metadatas?.[0]?.[i] ?? {}) as Record<string, any>,
+        text: text ?? "",
+        meta: (res.metadatas?.[0]?.[i] ?? {}) as Record<string, unknown>,
         score
       };
     });
