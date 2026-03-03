@@ -36,7 +36,16 @@ const schema = z.object({
   DOC_K: z.coerce.number().min(1).default(4),
   EXPENSES_K: z.coerce.number().min(1).default(4),
   INTENT_DELTA: z.coerce.number().default(0.05),
-  EXPENSES_CACHE_TTL_MS: z.coerce.number().default(30000)
+  EXPENSES_CACHE_TTL_MS: z.coerce.number().default(30000),
+  LLM_TIMEOUT_MS: z.coerce.number().default(30000),
+
+  // Copilot SDK
+  COPILOT_MODEL: z.string().default("gpt-4.1"),
+  COPILOT_CLI_PATH: z.string().default(""),
+  COPILOT_GITHUB_TOKEN: z.string().default(""),
+
+  // Web search (Brave Search API se la chiave è presente, DuckDuckGo instant altrimenti)
+  WEBSEARCH_API_KEY: z.string().default("")
 });
 
 const raw = schema.parse(process.env);

@@ -3,9 +3,14 @@ param(
 )
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$docPath = Join-Path $scriptDir "..\\data\\demo-kb\\app-demo.md"
-$resolved = Resolve-Path $docPath
+$docPath = Join-Path $scriptDir ".." "data" "demo-kb" "app-demo.md"
 
+if (-not (Test-Path $docPath)) {
+  Write-Error "File non trovato: $docPath`nCrea il file data/demo-kb/app-demo.md prima di eseguire questo script."
+  exit 1
+}
+
+$resolved = Resolve-Path $docPath
 $text = Get-Content -Path $resolved -Raw
 
 $body = @{

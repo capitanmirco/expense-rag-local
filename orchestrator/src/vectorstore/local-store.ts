@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import { embed } from "../embeddings.js";
 import type { VectorStore, RetrievedChunk } from "./types.js";
 import { randomUUID } from "crypto";
+import { cosine } from "../utils.js";
 
 type Stored = {
   id: string;
@@ -11,18 +12,6 @@ type Stored = {
   meta: Record<string, any>;
   embedding: number[];
 };
-
-function cosine(a: number[], b: number[]) {
-  let dot = 0, na = 0, nb = 0;
-  const n = Math.min(a.length, b.length);
-  for (let i = 0; i < n; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  return denom ? dot / denom : 0;
-}
 
 function chunkText(text: string, maxChars = 900): string[] {
   const paras = text.split(/\n{2,}/g).map(s => s.trim()).filter(Boolean);

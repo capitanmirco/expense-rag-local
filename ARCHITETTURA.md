@@ -1,106 +1,168 @@
 # Architettura del progetto (focus Chatbot RAG)
 
-Questo documento descrive in modo semplice come sono fatte le 3 app e come collaborano tra loro, con focus sul chatbot.
+Questo documento descrive come sono fatte le 3 app e come collaborano tra loro, con focus sul chatbot e sul layer LLM basato su `@github/copilot-sdk`.
 
 ## Diagramma architettura
+
 ```mermaid
 flowchart LR
-  FE[Frontend\nAngular] -->|/chat, /rag/ingest| ORCH[Orchestrator\nExpress]
+  FE[Frontend\nAngular] -->|/chat, /models, /quota| ORCH[Orchestrator\nExpress]
   FE -->|CRUD spese| API[Nest API\nSQLite]
-  ORCH -->|RAG query| CHR[ChromaDB]
-  ORCH -->|LLM chat| LLM[Groq LLM]
-  ORCH -->|Tools| MCP[MCP Server]
+  ORCH -->|RAG query| CHR[ChromaDB\no fallback locale]
+  ORCH -->|LLM provider copilot| COP[GitHub Copilot SDK\ngpt-4.1 / altri modelli]
+  ORCH -->|LLM provider groq/custom| LLM[Groq / OpenAI-compat]
+  ORCH -->|Tool spese diretto| API
+  ORCH -->|Tool web.search| WEB[Brave Search\no DuckDuckGo]
+  ORCH -->|Tool spese opz.| MCP[MCP Server]
   MCP --> API
 ```
 
 ## Componenti principali
 
-1) **Frontend (Angular)**
-   - UI per CRUD spese + chat.
-   - Porta: `http://localhost:4200`.
-   - Chiama l’orchestrator per la chat e la Nest API per il CRUD.
+### 1. Frontend (Angular 19)
+- UI CRUD spese + chat widget standalone.
+- Porta: `http://localhost:4200`.
+- Comunica con l'orchestrator per `/chat`, `/models`, `/quota` e con la Nest API per il CRUD.
+- **Selezione modello**: recupera i modelli Copilot da `GET /models` e li mostra in un dropdown ordinato (gratuiti → premium → non-enabled). Il modello scelto viene passato in ogni richiesta `/chat`.
+- **Monitoraggio quota**: mostra il contatore richieste premium della sessione e la quota residua da `GET /quota`.
 
-2) **API (NestJS + SQLite)**
-   - Espone le API CRUD delle spese.
-   - Persiste su `api/data/expenses.sqlite`.
-   - Porta: `http://localhost:3000`.
+### 2. API (NestJS + SQLite)
+- CRUD spese su `api/data/expenses.sqlite`.
+- Porta: `http://localhost:3000`.
 
-3) **Orchestrator (Node.js + Express)**
-   - Gestisce la logica RAG documentale + routing intent (spese vs documenti) + chiamate LLM.
-   - I tool spese possono passare tramite MCP server (opzionale) o chiamare l’API direttamente.
-   - Porta: `http://localhost:3001`.
-   - Vector store: Chroma (`http://localhost:8000`) o fallback locale.
+### 3. Orchestrator (Node.js + Express)
+- Pipeline RAG documentale + routing intent + tool loop + chiamate LLM.
+- Porta: `http://localhost:3001`.
+- Vector store: ChromaDB (`http://localhost:8000`) o fallback locale (`data/fallback-store.json`).
 
-## Tecnologie usate (in breve)
+## Tecnologie usate
 
-- **Angular**: frontend reattivo, gestisce UI e chiamate HTTP.
-- **NestJS**: backend API con pattern strutturato e DB SQLite.
-- **Express**: server leggero per orchestrare chat, RAG e tool.
-- **ChromaDB**: database vettoriale per RAG (se non disponibile usa un file locale).
-- **LLM (Groq, OpenAI‑compatible)**: genera le risposte del chatbot.
-- **Embeddings**: vettorizzano testi (default locale con `@chroma-core/default-embed`).
+- **Angular 19**: frontend reattivo con componenti standalone e Angular Signals.
+- **NestJS**: backend API con TypeORM e SQLite.
+- **Express**: server leggero per chat, RAG e tool.
+- **`@github/copilot-sdk`**: client LLM principale — wrappa la CLI di GitHub Copilot e gestisce sessioni e modelli.
+- **ChromaDB**: vector store per RAG (fallback locale se non disponibile).
+- **Embeddings**: `@chroma-core/default-embed` locale (default) o provider esterno.
+
+## Provider LLM: `@github/copilot-sdk`
+
+Il modulo `orchestrator/src/llm-copilot.ts` è un drop-in replacement di `chat()`:
+
+| Responsabilità | Implementazione |
+|---|---|
+| Singleton `CopilotClient` | Processo CLI avviato una sola volta, `autoRestart: true` |
+| Sessioni per chiamata | `client.createSession()` → `session.sendAndWait()` → `session.destroy()` |
+| Cronologia messaggi | Iniettata nel `systemMessage`; solo l'ultimo messaggio è il prompt |
+| Nessun tool nativo | `availableTools: []` — tool gestiti dall'orchestrator |
+| Lista modelli | `client.rpc.models.list()` (bypass cache SDK interna) |
+| Quota account | `client.rpc.account.getQuota()` |
+
+`orchestrator/src/llm.ts` esegue il dispatch:
+
+```typescript
+if (env.LLM_PROVIDER === "copilot") return chatViaCopilotSdk(messages, model);
+// altrimenti: OpenAI-compatible (Groq, custom)
+```
 
 ## Flusso del chatbot (passo per passo)
 
-1) **L’utente scrive un messaggio nella UI**
-   - Il frontend manda `POST /chat` all’orchestrator con la lista di messaggi.
+### 1. Frontend invia il messaggio
+`POST /chat` con la cronologia completa e il modello selezionato.
 
-2) **Router intent (spese vs documenti)**
-   - L’orchestrator valuta se la domanda riguarda le spese o i documenti PDF.
-   - Se e una domanda sulle spese, abilita i tool spese.
-   - Se e una domanda sui documenti, usa solo il contesto RAG documentale.
+### 2. Guardrail di perimetro
+Se la domanda è esplicitamente fuori perimetro (es. meteo, sport), risposta immediata di rifiuto senza chiamare l'LLM.
 
-2b) **Guardrail di perimetro (scope)**
-   - Se la domanda contiene keyword fuori perimetro (es. meteo o sport) risponde con un rifiuto guidato.
-   - Se il contesto documentale e troppo debole, chiede chiarimenti o dichiara che la richiesta e fuori scope.
+### 3. Router intent
 
-3) **Prompting del modello**
-   - L’orchestrator costruisce un `system` prompt con:
-     - Regole dell’assistente
-     - Regole dei tool (JSON obbligatorio se serve il tool)
-     - CONTENUTO DOCUMENTI (se pertinente)
-   - Invia tutto al modello LLM (Groq) via API OpenAI‑compatible.
+L'orchestrator calcola in parallelo:
+- **docScore**: rilevanza RAG sui PDF caricati.
+- **expenseScore**: rilevanza sull'indice in-memory delle spese.
 
-4) **Decisione: risposta normale o tool**
-   - Se il modello risponde con un JSON valido per un tool, l’orchestrator:
-     - Esegue il tool corrispondente (list/create/update/delete spese).
-     - Inoltra il risultato al modello per generare una risposta “umana”.
-   - Se non è un tool, la risposta viene inviata direttamente al frontend.
+E sceglie l'intent:
 
-5) **Risposta al frontend**
-   - L’orchestrator restituisce `reply` e le `sources` (metadati dei chunk documentali).
-   - Il frontend mostra la risposta in chat.
+| Intent | Azione |
+|---|---|
+| `expenses` | Abilita tool spese; ignora context doc |
+| `documents` | Usa solo il context RAG documentale |
+| `web` | Usa `web.search` per finanza/economia |
+| `clarify` | Chiede chiarimento all'utente |
+| out-of-scope | Rifiuto guidato |
+
+### 4. Tool loop (max 4 passi)
+
+L'orchestrator costruisce il system prompt, poi itera:
+
+```
+LLM risponde con JSON tool → orchestrator esegue tool → risultato come user message → LLM risposta finale
+```
+
+Tool disponibili: `expenses.list`, `expenses.create`, `expenses.update`, `expenses.delete`, `expenses.deleteAll`, `web.search`.
+
+### 5. Risposta al frontend
+`{ reply, sources, expensesChanged }` — il frontend mostra la risposta e ricarica le spese se `expensesChanged=true`.
 
 ## Flusso RAG: ingest
 
-1) Il client invia `POST /rag/ingest` con `docs[]` (id + testo + meta).
-2) L’orchestrator spezza i testi in chunk.
-3) Calcola gli embeddings.
-4) Inserisce i vettori nel Chroma (o nel fallback locale).
+1. `POST /rag/ingest` con `docs[]` (id + testo + meta).
+2. Chunking: split su `\n\n`, max 900 char per chunk.
+3. Calcolo embeddings con il provider configurato.
+4. Inserimento vettori in ChromaDB o file locale.
 
+### Upload PDF
+`POST /rag/upload` (multipart/form-data):
+1. Parsing PDF con `pdf-parse`.
+2. Conversione in Markdown → salvato in `orchestrator/data/markdown/`.
+3. Ingest nel vector store con `sourceType: "pdf"`.
+
+## Endpoint orchestrator
+
+| Metodo | Path | Descrizione |
+|---|---|---|
+| `GET` | `/health` | Stato + tipo vector store |
+| `GET` | `/models` | Lista modelli Copilot (solo con `LLM_PROVIDER=copilot`) |
+| `GET` | `/quota` | Quota Copilot (solo con `LLM_PROVIDER=copilot`) |
+| `POST` | `/chat` | Chat con RAG + tool loop |
+| `POST` | `/rag/ingest` | Ingest testi nel vector store |
+| `POST` | `/rag/search` | Ricerca semantica |
+| `POST` | `/rag/upload` | Upload + ingest PDF |
 
 ## MCP (opzionale)
-- Il server MCP espone i tool spese via JSON-RPC (`tools/list`, `tools/call`).
-- L’orchestrator puo usare MCP al posto delle chiamate dirette all’API.
 
-## Configurazione LLM/Embeddings (dove guardare)
+Il server MCP espone i tool spese via JSON-RPC (`tools/list`, `tools/call`).
+L'orchestrator lo usa al posto delle chiamate dirette all'API se `TOOLS_BACKEND=mcp`.
 
-- `orchestrator/.env`
-  - `LLM_PROVIDER=groq`
-  - `GROQ_API_KEY=...`
-  - `GROQ_MODEL=...`
-  - `EMBEDDINGS_PROVIDER=default-embed|openai-compat|ollama-native`
-  - `EMBEDDINGS_MODEL=...`
+## Configurazione LLM/Embeddings
+
+In `orchestrator/.env`:
+
+```env
+# Provider consigliato
+LLM_PROVIDER=copilot
+COPILOT_MODEL=gpt-4.1
+# COPILOT_CLI_PATH=...
+# COPILOT_GITHUB_TOKEN=...
+
+# Alternativa Groq
+# LLM_PROVIDER=groq
+# GROQ_API_KEY=...
+# GROQ_MODEL=...
+
+EMBEDDINGS_PROVIDER=default-embed
+EMBEDDINGS_MODEL=Xenova/all-MiniLM-L6-v2
+```
 
 ## Porte e dipendenze tra servizi
 
-- Frontend (4200) -> Orchestrator (3001) per `/chat` e `/rag/ingest`
-- Frontend (4200) -> API Nest (3000) per CRUD spese
-- Orchestrator (3001) -> Chroma (8000) per vector store
-- Orchestrator (3001) -> Groq per LLM
-- Orchestrator (3001) -> MCP server (3400) per tool spese (opzionale)
-- MCP server (3400) -> API Nest (3000)
+| Da | A | Canale |
+|---|---|---|
+| Frontend (4200) | Orchestrator (3001) | `/chat`, `/models`, `/quota`, `/rag/*` |
+| Frontend (4200) | API Nest (3000) | CRUD spese |
+| Orchestrator (3001) | ChromaDB (8000) | Vector store |
+| Orchestrator (3001) | Copilot CLI / Groq | LLM |
+| Orchestrator (3001) | Brave/DuckDuckGo | `web.search` tool |
+| Orchestrator (3001) | MCP server (3400) | Tool spese (opzionale) |
+| MCP server (3400) | API Nest (3000) | Tool spese |
 
-## Riassunto mentale (1 riga)
+## Riassunto (1 riga)
 
-**Frontend** chiede la chat → **Orchestrator** decide spese/documenti, fa RAG documentale + tool → chiama **LLM** e **MCP/API spese** → risponde al frontend.
+**Frontend** sceglie il modello e invia la chat → **Orchestrator** riconosce l'intent, fa RAG + tool loop tramite **Copilot SDK** (o Groq) → risponde con `reply` + `sources` → **Frontend** mostra il risultato e aggiorna le spese se necessario.

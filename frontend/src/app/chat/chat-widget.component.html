@@ -17,6 +17,30 @@
     </div>
   </div>
 
+  <div class="model-bar">
+    <div class="model-select-wrap">
+      <label class="model-label" for="model-select">Modello</label>
+      <select id="model-select" class="model-select" (change)="onModelChange($event)" [disabled]="modelsLoading() || models().length === 0">
+        <option *ngIf="modelsLoading()" value="" disabled selected>Caricamento modelli...</option>
+        <option *ngFor="let m of models()" [value]="m.id" [selected]="m.id === selectedModel()">
+          {{ (!m.policy || m.policy === 'enabled') ? '' : '⚠ ' }}{{ m.name }} — {{ m.multiplier === 0 ? 'gratuito' : m.multiplier + 'x PR/msg' }}
+        </option>
+      </select>
+    </div>
+
+    <div class="pr-row">
+      <div class="pr-counter" [class.pr-active]="sessionPremiumRequests() > 0" title="PR utilizzate in questa sessione">
+        <span class="pr-label">Sessione</span>
+        <span class="pr-value">{{ premiumRequestsFormatted() }} PR</span>
+      </div>
+      <div class="pr-counter pr-account" *ngIf="premiumQuotaDisplay()" [class.pr-low]="premiumQuotaDisplay()!.pct < 20" title="Quota premium request del tuo account Copilot">
+        <span class="pr-label">Rimanenti</span>
+        <span class="pr-value">{{ premiumQuotaDisplay()!.remaining }} / {{ premiumQuotaDisplay()!.total }}</span>
+        <span class="pr-pct">({{ premiumQuotaDisplay()!.pct }}%<span *ngIf="premiumQuotaDisplay()!.resetDate"> · reset {{ premiumQuotaDisplay()!.resetDate }}</span>)</span>
+      </div>
+    </div>
+  </div>
+
   <div class="log">
     <div class="msg" *ngFor="let m of messages()" [class.user]="m.role === 'user'">
       <div class="bubble">{{ m.content }}</div>
