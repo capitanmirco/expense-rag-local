@@ -1,4 +1,4 @@
-import { Component, OnInit, Output, EventEmitter, signal, computed } from "@angular/core";
+import { Component, OnInit, Output, EventEmitter, signal, computed, inject } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { ReactiveFormsModule, FormBuilder, Validators } from "@angular/forms";
 import { ChatApiService, ChatMsg, ModelOption, QuotaSnapshot } from "../core/chat-api.service";
@@ -56,11 +56,12 @@ export class ChatWidgetComponent implements OnInit {
     return { remaining, total: q.entitlementRequests, pct, resetDate };
   });
 
+  private readonly fb = inject(FormBuilder);
+  private readonly chatApi = inject(ChatApiService);
+
   readonly form = this.fb.group({
     text: this.fb.control("", { validators: [Validators.required], nonNullable: true })
   });
-
-  constructor(private readonly fb: FormBuilder, private readonly chatApi: ChatApiService) {}
 
   ngOnInit() {
     this.chatApi.getModels().subscribe({

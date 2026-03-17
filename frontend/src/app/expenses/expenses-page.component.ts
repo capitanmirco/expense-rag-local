@@ -1,4 +1,4 @@
-import { Component, Inject, OnDestroy, signal } from "@angular/core";
+import { Component, OnDestroy, signal, inject } from "@angular/core";
 import { CommonModule, DOCUMENT } from "@angular/common";
 import { ReactiveFormsModule, FormBuilder, Validators } from "@angular/forms";
 import { ExpensesApiService, Expense } from "../core/expenses-api.service";
@@ -38,6 +38,10 @@ export class ExpensesPageComponent implements OnDestroy {
     this.applyTheme(!this.darkMode());
   }
 
+  private readonly fb = inject(FormBuilder);
+  private readonly api = inject(ExpensesApiService);
+  private readonly document = inject(DOCUMENT);
+
   readonly form = this.fb.group({
     date: this.fb.control<string>("", { validators: [Validators.required], nonNullable: true }),
     amount: this.fb.control<number>(0, { validators: [Validators.required, Validators.min(0)], nonNullable: true }),
@@ -45,11 +49,7 @@ export class ExpensesPageComponent implements OnDestroy {
     description: this.fb.control<string>("", { nonNullable: true })
   });
 
-  constructor(
-    private readonly fb: FormBuilder,
-    private readonly api: ExpensesApiService,
-    @Inject(DOCUMENT) private readonly document: Document
-  ) {
+  constructor() {
     // Ripristina tema da localStorage, o segue OS se non salvato
     const saved = localStorage.getItem(this.LS_KEY);
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -69,11 +69,11 @@ export class ExpensesPageComponent implements OnDestroy {
     const id = this.editingId();
 
     if (!id) {
-      this.api.create(payload as any).subscribe(() => { this.reset(); this.reload(); });
+      this.api.create(payload).subscribe(() => { this.reset(); this.reload(); });
       return;
     }
 
-    this.api.update(id, payload as any).subscribe(() => { this.reset(); this.reload(); });
+    this.api.update(id, payload).subscribe(() => { this.reset(); this.reload(); });
   }
 
   edit(e: Expense) {

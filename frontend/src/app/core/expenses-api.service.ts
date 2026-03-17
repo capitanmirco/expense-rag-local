@@ -13,7 +13,7 @@ export type Expense = {
 
 @Injectable({ providedIn: "root" })
 export class ExpensesApiService {
-  constructor(private http: HttpClient) {}
+  constructor(private readonly http: HttpClient) {}
 
   list() {
     return this.http.get<Expense[]>(`${API_BASE_URL}/expenses`);

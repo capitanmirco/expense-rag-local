@@ -31,7 +31,7 @@ function chunkText(text: string, maxChars = 900): string[] {
 }
 
 export class LocalStore implements VectorStore {
-  private filePath: string;
+  private readonly filePath: string;
 
   constructor() {
     const __filename = fileURLToPath(import.meta.url);

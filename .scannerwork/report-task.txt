@@ -2,5 +2,5 @@ projectKey=expense-rag-local
 serverUrl=http://localhost:9000
 serverVersion=25.8.0.112029
 dashboardUrl=http://localhost:9000/dashboard?id=expense-rag-local
-ceTaskId=2c49df2e-d68b-4001-9663-7d66252fc557
-ceTaskUrl=http://localhost:9000/api/ce/task?id=2c49df2e-d68b-4001-9663-7d66252fc557
+ceTaskId=6a905f56-be2e-48be-be69-39482c6d36f2
+ceTaskUrl=http://localhost:9000/api/ce/task?id=6a905f56-be2e-48be-be69-39482c6d36f2

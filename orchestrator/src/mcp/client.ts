@@ -46,9 +46,8 @@ async function rpc(method: string, params?: Record<string, unknown>) {
 }
 
 type ToolContent = { type: string; json?: unknown };
-type ToolResult = { content?: ToolContent[] } | unknown;
 
-function unwrapToolResult(result: ToolResult) {
+function unwrapToolResult(result: unknown) {
   if (!result) return result;
   const r = result as { content?: ToolContent[] };
   if (Array.isArray(r.content)) {

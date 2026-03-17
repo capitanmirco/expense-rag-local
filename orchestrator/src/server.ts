@@ -11,6 +11,7 @@ import { env } from "./config.js";
 import { chat } from "./llm.js";
 import { listCopilotModels, getCopilotQuota } from "./llm-copilot.js";
 import { createVectorStore } from "./vectorstore/index.js";
+import type { RetrievedChunk } from "./vectorstore/types.js";
 import { listExpenses, createExpense, updateExpense, deleteExpense, deleteAllExpenses } from "./tools/expenses.js";
 import { ExpensesIndex } from "./expenses-index.js";
 import {
@@ -23,6 +24,7 @@ import {
   pickIntent,
   slugify,
   pdfTextToMarkdown,
+  type Intent,
 } from "./utils.js";
 import { webSearch } from "./tools/web-search.js";
 
@@ -68,6 +70,25 @@ const MUTATING_TOOLS = new Set([
 
 type WorkingMsg = { role: "system" | "user" | "assistant"; content: string };
 
+function tryParseToolCall(jsonStr: string): { tool: string; args: Record<string, unknown> } | null {
+  try {
+    return toolCallSchema.parse(JSON.parse(jsonStr)) as { tool: string; args: Record<string, unknown> };
+  } catch {
+    return null;
+  }
+}
+
+async function executeToolSafe(toolCall: { tool: string; args: Record<string, unknown> }): Promise<unknown> {
+  try {
+    const result = await executeTool(toolCall);
+    console.log(`[chat] tool executed: ${toolCall.tool}`);
+    return result;
+  } catch (err) {
+    console.error(`[chat] tool error (${toolCall.tool}):`, err);
+    return { error: String(err) };
+  }
+}
+
 async function executeTool(call: { tool: string; args: Record<string, unknown> }): Promise<unknown> {
   switch (call.tool) {
     case "expenses.list":      return listExpenses();
@@ -99,22 +120,10 @@ async function runToolLoop(
     const jsonStr = intent === "documents" ? null : extractToolCallJson(draft);
     if (!jsonStr) { finalReply = draft; break; }
 
-    let toolCall: { tool: string; args: Record<string, unknown> };
-    try {
-      toolCall = toolCallSchema.parse(JSON.parse(jsonStr));
-    } catch {
-      finalReply = draft;
-      break;
-    }
+    const toolCall = tryParseToolCall(jsonStr);
+    if (!toolCall) { finalReply = draft; break; }
 
-    let toolResult: unknown;
-    try {
-      toolResult = await executeTool(toolCall);
-      console.log(`[chat] tool executed: ${toolCall.tool}`);
-    } catch (err) {
-      console.error(`[chat] tool error (${toolCall.tool}):`, err);
-      toolResult = { error: String(err) };
-    }
+    const toolResult = await executeToolSafe(toolCall);
 
     if (MUTATING_TOOLS.has(toolCall.tool)) expensesChanged = true;
 
@@ -133,6 +142,16 @@ async function runToolLoop(
   return { finalReply, expensesChanged };
 }
 
+/** Trova l'indice di chiusura di un oggetto JSON che inizia a `start`. Ritorna -1 se non bilanciato. */
+function findJsonEnd(text: string, start: number): number {
+  let depth = 0;
+  for (let j = start; j < text.length; j++) {
+    if (text[j] === '{') depth++;
+    else if (text[j] === '}' && --depth === 0) return j;
+  }
+  return -1;
+}
+
 /**
  * Estrae il primo oggetto JSON contenente la chiave "tool" dal testo.
  * Gestisce il caso in cui l'LLM includa testo libero prima/dopo il JSON.
@@ -140,18 +159,9 @@ async function runToolLoop(
 function extractToolCallJson(text: string): string | null {
   for (let i = 0; i < text.length; i++) {
     if (text[i] !== '{') continue;
-    let depth = 0;
-    let j = i;
-    while (j < text.length) {
-      if (text[j] === '{') depth++;
-      else if (text[j] === '}') {
-        depth--;
-        if (depth === 0) break;
-      }
-      j++;
-    }
-    if (depth !== 0) break;
-    const candidate = text.slice(i, j + 1);
+    const end = findJsonEnd(text, i);
+    if (end === -1) break;
+    const candidate = text.slice(i, end + 1);
     if (candidate.includes('"tool"')) return candidate;
   }
   return null;
@@ -159,6 +169,127 @@ function extractToolCallJson(text: string): string | null {
 
 const store = await createVectorStore();
 const expensesIndex = new ExpensesIndex();
+
+interface ResolvedContext {
+  earlyReply: { reply: string; sources: [] } | null;
+  intent: Intent;
+  docContext: RetrievedChunk[];
+}
+
+async function resolveIntentAndContext(lastUser: string, outOfScopeReply: string): Promise<ResolvedContext> {
+  const expenseHint = isExpenseHint(lastUser);
+  const docHint = isDocHint(lastUser);
+  const docFilter = docHint ? { sourceType: "pdf" } : undefined;
+  const expenseSearch = env.EXPENSES_K > 0
+    ? expensesIndex.search(lastUser, env.EXPENSES_K)
+    : Promise.resolve([] as { expense: any; score: number; text: string }[]);
+
+  const [docCtx, expenseMatches] = await Promise.all([
+    store.query(lastUser, env.DOC_K, docFilter ? { filter: docFilter } : undefined),
+    expenseSearch
+  ]);
+
+  const docScore = docCtx[0]?.score ?? 0;
+  const expenseScore = expenseMatches[0]?.score ?? 0;
+
+  let intent = pickIntent({
+    expenseHint, docHint, expenseScore, docScore,
+    intentDelta: env.INTENT_DELTA,
+    expensesMinScore: env.EXPENSES_MIN_SCORE,
+    docMinScore: env.DOC_MIN_SCORE
+  });
+
+  if (intent === "unknown") {
+    if (isFinanceWebHint(lastUser)) {
+      intent = "web";
+    } else {
+      return { earlyReply: { reply: outOfScopeReply, sources: [] }, intent, docContext: [] };
+    }
+  }
+
+  if (intent === "clarify") {
+    return {
+      earlyReply: {
+        reply: "Per risponderti correttamente ho bisogno di capire il contesto.\nVuoi informazioni sulle spese nel database oppure sul contenuto dei PDF caricati?",
+        sources: []
+      },
+      intent,
+      docContext: []
+    };
+  }
+
+  if (intent === "documents" && docCtx.length === 0) {
+    return {
+      earlyReply: {
+        reply: docHint
+          ? "Non ho documenti PDF caricati o il contenuto non e disponibile. Carica un PDF e riprova."
+          : "Non ho documenti disponibili o il contenuto non e accessibile. Carica un PDF o fornisci nuove informazioni.",
+        sources: []
+      },
+      intent,
+      docContext: []
+    };
+  }
+
+  const docContext = intent === "documents" ? docCtx : [];
+  return { earlyReply: null, intent, docContext };
+}
+
+function buildChatSystemPrompt(intent: Intent, docContext: RetrievedChunk[]): string {
+  const contextBlock = docContext.map((d, i) => {
+    const source = d.meta?.source ?? d.meta?.sourceId ?? "documento";
+    return `[#${i + 1} score=${d.score.toFixed(3)} source=${source}] ${d.text}`;
+  }).join("\n\n");
+
+  return `
+Sei un assistente demo per ${env.SCOPE_DOMAIN}.
+Aiuti gli utenti a usare l'app e a gestire le spese personali nel perimetro della demo.
+Se la domanda e fuori perimetro, rifiuta con cortesia e spiega cosa puoi fare.
+
+ROUTER (intento selezionato):
+- Intento: ${intent}
+- Se intento = "expenses": usa i tool spese per leggere o modificare i dati. Puoi usare web.search per contesto finanziario se utile. Non usare CONTENUTO DOCUMENTI.
+- Se intento = "web": usa web.search per cercare informazioni finanziarie. Puoi anche usare i tool spese se l'utente vuole aggiornare il database.
+- Se intento = "documents": rispondi SOLO usando CONTENUTO DOCUMENTI. Non usare tool spese n\u00e9 web.search.
+
+REGOLE DI PERIMETRO:
+- Rispondi solo se la domanda riguarda ${env.SCOPE_DOMAIN} o le funzioni dell'app demo.
+- Usa solo il CONTENUTO DOCUMENTI (quando presente) e gli eventuali "Tool result".
+- Se il CONTENUTO DOCUMENTI e vuoto o non pertinente, chiedi chiarimenti o spiega che non hai info nel perimetro.
+- La demo include una sezione "Spese": usa i tool per elencare, creare, aggiornare o cancellare spese.
+
+REGOLE TOOL:
+- Se serve usare i tool, rispondi ESCLUSIVAMENTE con un JSON su una singola riga (nessun testo prima o dopo):
+  {"tool":"expenses.list","args":{}}
+  {"tool":"expenses.create","args":{"amount":12.34,"date":"2026-01-27","currency":"EUR","category":"food","description":"pizza"}}
+  {"tool":"expenses.update","args":{"id":"...","patch":{...}}}
+  {"tool":"expenses.delete","args":{"id":"..."}}
+  {"tool":"expenses.deleteAll","args":{}}
+  {"tool":"web.search","args":{"query":"inflazione Italia 2025"}}
+- Usa expenses.deleteAll quando l'utente vuole eliminare tutte le spese in una sola operazione.
+- NON usare expenses.list seguito da expenses.delete ciclicamente: usa direttamente expenses.deleteAll.
+- Usa web.search per domande su finanza, risparmio, investimenti, inflazione, tasse, mutui, valute o economia che non trovano risposta nel database spese o nei documenti.
+- web.search è limitato a temi finanziari: risparmio, budget, economia, banche, investimenti, ecc. Non usarla per argomenti fuori perimetro.
+- Puoi chiamare più tool in sequenza: ogni risposta "Tool result" ti permette di fare un'altra chiamata o di rispondere all'utente.
+- Quando hai abbastanza informazioni, NON chiamare altri tool: produci la risposta finale per l'utente.
+- Risposta finale: linguaggio semplice e naturale, niente JSON, niente dettagli tecnici (tool, API, database) se non richiesti.
+- Riassumi l'esito in modo chiaro e, se utile, proponi la prossima azione con una domanda breve.
+
+FORMATO RISPOSTA (solo quando NON usi i tool):
+- Scegli il formato in base alla domanda:
+  - Discorsivo: quando spieghi, dai contesto o fai ragionamenti.
+  - Elenco puntato: quando presenti opzioni, consigli, esempi o categorie.
+  - Elenco numerato: quando descrivi passi o procedure in ordine.
+- Se serve, usa una breve frase introduttiva e poi l'elenco.
+- Usa righe vuote tra paragrafi o sezioni.
+- Per sottopunti usa 2 spazi di rientro.
+- Evita markdown: niente grassetto, corsivo, codice o tabelle; usa testo semplice.
+- Non comprimere tutto su una riga.
+
+CONTENUTO DOCUMENTI:
+${contextBlock || "(vuoto)"}
+`.trim();
+}
 
 app.get("/health", (_, res) => res.json({ ok: true, vectorStore: env.VECTOR_STORE }));
 
@@ -269,124 +400,23 @@ app.post("/chat", async (req, res) => {
   try {
     const body = chatSchema.parse(req.body);
     const lastUser = body.messages.findLast(m => m.role === "user")?.content ?? "";
+    const outOfScopeReply = buildOutOfScopeReply(env.SCOPE_DOMAIN);
 
-  const outOfScopeReply = buildOutOfScopeReply(env.SCOPE_DOMAIN);
-  if (isExplicitOutOfScope(lastUser)) {
-    return res.json({ reply: outOfScopeReply, sources: [] });
-  }
-
-  const expenseHint = isExpenseHint(lastUser);
-  const docHint = isDocHint(lastUser);
-
-  const docFilter = docHint ? { sourceType: "pdf" } : undefined;
-  const expenseSearch = env.EXPENSES_K > 0
-    ? expensesIndex.search(lastUser, env.EXPENSES_K)
-    : Promise.resolve([] as { expense: any; score: number; text: string }[]);
-
-  const [docCtx, expenseMatches] = await Promise.all([
-    store.query(lastUser, env.DOC_K, docFilter ? { filter: docFilter } : undefined),
-    expenseSearch
-  ]);
-
-  const docScore = docCtx[0]?.score ?? 0;
-  const expenseScore = expenseMatches[0]?.score ?? 0;
-
-  let intent = pickIntent({
-    expenseHint, docHint, expenseScore, docScore,
-    intentDelta: env.INTENT_DELTA,
-    expensesMinScore: env.EXPENSES_MIN_SCORE,
-    docMinScore: env.DOC_MIN_SCORE
-  });
-
-  // Promuove "unknown" → "web" per query su finanza/risparmio/economia
-  if (intent === "unknown") {
-    if (isFinanceWebHint(lastUser)) {
-      intent = "web";
-    } else {
+    if (isExplicitOutOfScope(lastUser)) {
       return res.json({ reply: outOfScopeReply, sources: [] });
     }
-  }
 
-  if (intent === "clarify") {
-    return res.json({
-      reply: [
-        "Per risponderti correttamente ho bisogno di capire il contesto.",
-        "Vuoi informazioni sulle spese nel database oppure sul contenuto dei PDF caricati?"
-      ].join("\n"),
-      sources: []
-    });
-  }
+    const resolved = await resolveIntentAndContext(lastUser, outOfScopeReply);
+    if (resolved.earlyReply) {
+      return res.json(resolved.earlyReply);
+    }
 
-  if (intent === "documents" && docCtx.length === 0) {
-    return res.json({
-      reply: docHint
-        ? "Non ho documenti PDF caricati o il contenuto non e disponibile. Carica un PDF e riprova."
-        : "Non ho documenti disponibili o il contenuto non e accessibile. Carica un PDF o fornisci nuove informazioni.",
-      sources: []
-    });
-  }
+    const { intent, docContext } = resolved;
+    const system = buildChatSystemPrompt(intent, docContext);
+    const msgs = body.messages.map(m => ({ role: m.role, content: m.content })) as WorkingMsg[];
+    const { finalReply, expensesChanged } = await runToolLoop(msgs, system, body.model, intent);
 
-  const docContext = intent === "documents" ? docCtx : [];
-  const contextBlock = docContext.map((d, i) => {
-    const source = d.meta?.source ?? d.meta?.sourceId ?? "documento";
-    return `[#${i + 1} score=${d.score.toFixed(3)} source=${source}] ${d.text}`;
-  }).join("\n\n");
-
-  const system = `
-Sei un assistente demo per ${env.SCOPE_DOMAIN}.
-Aiuti gli utenti a usare l'app e a gestire le spese personali nel perimetro della demo.
-Se la domanda e fuori perimetro, rifiuta con cortesia e spiega cosa puoi fare.
-
-ROUTER (intento selezionato):
-- Intento: ${intent}
-- Se intento = "expenses": usa i tool spese per leggere o modificare i dati. Puoi usare web.search per contesto finanziario se utile. Non usare CONTENUTO DOCUMENTI.
-- Se intento = "web": usa web.search per cercare informazioni finanziarie. Puoi anche usare i tool spese se l'utente vuole aggiornare il database.
-- Se intento = "documents": rispondi SOLO usando CONTENUTO DOCUMENTI. Non usare tool spese n\u00e9 web.search.
-
-REGOLE DI PERIMETRO:
-- Rispondi solo se la domanda riguarda ${env.SCOPE_DOMAIN} o le funzioni dell'app demo.
-- Usa solo il CONTENUTO DOCUMENTI (quando presente) e gli eventuali "Tool result".
-- Se il CONTENUTO DOCUMENTI e vuoto o non pertinente, chiedi chiarimenti o spiega che non hai info nel perimetro.
-- La demo include una sezione "Spese": usa i tool per elencare, creare, aggiornare o cancellare spese.
-
-REGOLE TOOL:
-- Se serve usare i tool, rispondi ESCLUSIVAMENTE con un JSON su una singola riga (nessun testo prima o dopo):
-  {"tool":"expenses.list","args":{}}
-  {"tool":"expenses.create","args":{"amount":12.34,"date":"2026-01-27","currency":"EUR","category":"food","description":"pizza"}}
-  {"tool":"expenses.update","args":{"id":"...","patch":{...}}}
-  {"tool":"expenses.delete","args":{"id":"..."}}
-  {"tool":"expenses.deleteAll","args":{}}
-  {"tool":"web.search","args":{"query":"inflazione Italia 2025"}}
-- Usa expenses.deleteAll quando l'utente vuole eliminare tutte le spese in una sola operazione.
-- NON usare expenses.list seguito da expenses.delete ciclicamente: usa direttamente expenses.deleteAll.
-- Usa web.search per domande su finanza, risparmio, investimenti, inflazione, tasse, mutui, valute o economia che non trovano risposta nel database spese o nei documenti.
-- web.search è limitato a temi finanziari: risparmio, budget, economia, banche, investimenti, ecc. Non usarla per argomenti fuori perimetro.
-- Puoi chiamare più tool in sequenza: ogni risposta "Tool result" ti permette di fare un'altra chiamata o di rispondere all'utente.
-- Quando hai abbastanza informazioni, NON chiamare altri tool: produci la risposta finale per l'utente.
-- Risposta finale: linguaggio semplice e naturale, niente JSON, niente dettagli tecnici (tool, API, database) se non richiesti.
-- Riassumi l'esito in modo chiaro e, se utile, proponi la prossima azione con una domanda breve.
-
-FORMATO RISPOSTA (solo quando NON usi i tool):
-- Scegli il formato in base alla domanda:
-  - Discorsivo: quando spieghi, dai contesto o fai ragionamenti.
-  - Elenco puntato: quando presenti opzioni, consigli, esempi o categorie.
-  - Elenco numerato: quando descrivi passi o procedure in ordine.
-- Se serve, usa una breve frase introduttiva e poi l'elenco.
-- Usa righe vuote tra paragrafi o sezioni.
-- Per sottopunti usa 2 spazi di rientro.
-- Evita markdown: niente grassetto, corsivo, codice o tabelle; usa testo semplice.
-- Non comprimere tutto su una riga.
-
-CONTENUTO DOCUMENTI:
-${contextBlock || "(vuoto)"}
-`.trim();
-
-  const sources = docContext.map(c => c.meta);
-  const msgs = body.messages.map(m => ({ role: m.role, content: m.content })) as WorkingMsg[];
-
-  const { finalReply, expensesChanged } = await runToolLoop(msgs, system, body.model, intent);
-
-  return res.json({ reply: sanitizeReply(finalReply), sources, expensesChanged });
+    return res.json({ reply: sanitizeReply(finalReply), sources: docContext.map(c => c.meta), expensesChanged });
   } catch (err) {
     console.error("[chat] unhandled error", err);
     res.status(500).json({ error: "Errore interno del server. Riprova." });

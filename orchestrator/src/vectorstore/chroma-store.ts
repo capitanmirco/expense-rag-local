@@ -27,7 +27,8 @@ function parseChromaUrl(raw: string) {
 function getChromaClientArgs() {
   const url = parseChromaUrl(env.CHROMA_URL);
   const ssl = url.protocol === "https:";
-  const port = url.port ? Number(url.port) : (ssl ? 443 : 80);
+  const defaultPort = ssl ? 443 : 80;
+  const port = url.port ? Number(url.port) : defaultPort;
   return { host: url.hostname, port, ssl };
 }
 
@@ -49,7 +50,7 @@ function chunkText(text: string, maxChars = 900): string[] {
 }
 
 export class ChromaStore implements VectorStore {
-  private client = new ChromaClient(getChromaClientArgs());
+  private readonly client = new ChromaClient(getChromaClientArgs());
   private col: any = null;
 
   private async getCollection() {

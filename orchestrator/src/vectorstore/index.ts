@@ -6,7 +6,8 @@ import { LocalStore } from "./local-store.js";
 async function chromaReachable(url: string) {
   try {
     const r = await fetch(url, { method: "GET" });
-    return r.ok || r.status === 404;
+    if (r.ok) return true;
+    return r.status === 404;
   } catch {
     return false;
   }

@@ -53,9 +53,9 @@ const resolved = { ...raw };
 const provider = raw.LLM_PROVIDER?.toLowerCase();
 
 if (provider === "groq") {
-  if (!resolved.LLM_BASE_URL) resolved.LLM_BASE_URL = "https://api.groq.com/openai/v1";
-  if (!resolved.LLM_API_KEY) resolved.LLM_API_KEY = raw.GROQ_API_KEY;
-  if (!resolved.LLM_MODEL) resolved.LLM_MODEL = raw.GROQ_MODEL;
+  resolved.LLM_BASE_URL ??= "https://api.groq.com/openai/v1";
+  resolved.LLM_API_KEY ??= raw.GROQ_API_KEY;
+  resolved.LLM_MODEL ??= raw.GROQ_MODEL;
 }
 
 export const env = resolved;

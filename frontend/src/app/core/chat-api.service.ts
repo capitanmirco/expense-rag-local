@@ -23,7 +23,7 @@ export interface QuotaSnapshot {
 
 @Injectable({ providedIn: "root" })
 export class ChatApiService {
-  constructor(private http: HttpClient) {}
+  constructor(private readonly http: HttpClient) {}
 
   getModels() {
     return this.http.get<{ models: ModelOption[] }>(`${CHAT_BASE_URL}/models`);

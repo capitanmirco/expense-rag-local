@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import { z } from "zod";
 import { env } from "../config.js";
 import { listExpenses, createExpense, updateExpense, deleteExpense } from "../tools/expenses-api.js";
@@ -72,7 +72,31 @@ function err(id: string | number, message: string, code = -32000) {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
-app.post("/rpc", async (req, res) => {
+async function handleToolsCall(id: string | number, p: Record<string, unknown> | undefined, res: Response) {
+  const name = p?.name as string | undefined;
+  const args = (p?.arguments ?? {}) as Record<string, unknown>;
+  if (!name) return res.json(err(id, "Missing tool name", -32602));
+
+  if (name === "expenses.list") {
+    const data = await listExpenses();
+    return res.json(ok(id, { content: [{ type: "json", json: data }] }));
+  }
+  if (name === "expenses.create") {
+    const data = await createExpense(args as Parameters<typeof createExpense>[0]);
+    return res.json(ok(id, { content: [{ type: "json", json: data }] }));
+  }
+  if (name === "expenses.update") {
+    const data = await updateExpense(args.id as string, args.patch as Record<string, unknown>);
+    return res.json(ok(id, { content: [{ type: "json", json: data }] }));
+  }
+  if (name === "expenses.delete") {
+    const data = await deleteExpense(args.id as string);
+    return res.json(ok(id, { content: [{ type: "json", json: data }] }));
+  }
+  return res.json(err(id, `Tool not found: ${name}`, -32601));
+}
+
+app.post("/rpc", async (req: Request, res: Response) => {
   const parsed = rpcSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
@@ -82,35 +106,8 @@ app.post("/rpc", async (req, res) => {
   const p = params as Record<string, unknown> | undefined;
 
   try {
-    if (method === "tools/list") {
-      return res.json(ok(id, tools));
-    }
-
-    if (method === "tools/call") {
-      const name = p?.name as string | undefined;
-      const args = (p?.arguments ?? {}) as Record<string, unknown>;
-      if (!name) return res.json(err(id, "Missing tool name", -32602));
-
-      if (name === "expenses.list") {
-        const data = await listExpenses();
-        return res.json(ok(id, { content: [{ type: "json", json: data }] }));
-      }
-      if (name === "expenses.create") {
-        const data = await createExpense(args as Parameters<typeof createExpense>[0]);
-        return res.json(ok(id, { content: [{ type: "json", json: data }] }));
-      }
-      if (name === "expenses.update") {
-        const data = await updateExpense(args.id as string, args.patch as Record<string, unknown>);
-        return res.json(ok(id, { content: [{ type: "json", json: data }] }));
-      }
-      if (name === "expenses.delete") {
-        const data = await deleteExpense(args.id as string);
-        return res.json(ok(id, { content: [{ type: "json", json: data }] }));
-      }
-
-      return res.json(err(id, `Tool not found: ${name}`, -32601));
-    }
-
+    if (method === "tools/list") return res.json(ok(id, tools));
+    if (method === "tools/call") return await handleToolsCall(id, p, res);
     return res.json(err(id, `Method not found: ${method}`, -32601));
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Internal error";
